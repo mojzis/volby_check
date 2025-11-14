@@ -117,19 +117,33 @@ def __(mo):
 
 @app.cell
 def __(df, pd, top_parties):
-    # Filter for top parties only and where they got 0 votes
-    zero_votes = df[df['KSTRANA'].isin(top_parties) & (df['POC_HLASU'] == 0)][['KSTRANA', 'ID_OKRSKY']].copy()
-    zero_votes.columns = ['Party', 'Commission_ID']
+    # Get all unique commissions and top parties
+    all_commissions = df['ID_OKRSKY'].unique()
+
+    # Create a DataFrame with all possible combinations of top parties and commissions
+    all_combinations = pd.MultiIndex.from_product(
+        [top_parties, all_commissions],
+        names=['Party', 'Commission_ID']
+    ).to_frame(index=False)
+
+    # Get actual combinations present in the data
+    actual_combinations = df[df['KSTRANA'].isin(top_parties)][['KSTRANA', 'ID_OKRSKY']].copy()
+    actual_combinations.columns = ['Party', 'Commission_ID']
+    actual_combinations['Present'] = True
+
+    # Merge to find missing combinations (where parties got 0 votes)
+    combined = all_combinations.merge(actual_combinations, on=['Party', 'Commission_ID'], how='left')
+    zero_votes = combined[combined['Present'].isna()][['Party', 'Commission_ID']].copy()
 
     # Calculate total votes per commission (once, for all commissions)
     commission_totals = df.groupby('ID_OKRSKY')['POC_HLASU'].sum().reset_index()
     commission_totals.columns = ['Commission_ID', 'Total_Votes_In_Commission']
 
-    # Merge to get the total votes for each commission where a top party got 0
+    # Merge to get the total votes for each commission where a top party is missing
     zero_votes_df = zero_votes.merge(commission_totals, on='Commission_ID')
 
     zero_votes_df
-    return (zero_votes_df,)
+    return all_combinations, zero_votes_df
 
 
 @app.cell
