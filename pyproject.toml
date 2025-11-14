@@ -8,4 +8,5 @@ dependencies = [
     "marimo>=0.17.8",
     "pandas>=2.0.0",
     "requests>=2.31.0",
+    "pyarrow>=14.0.0",
 ]

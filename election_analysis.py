@@ -11,7 +11,8 @@ def __():
     import requests
     import zipfile
     import io
-    return io, mo, pd, requests, zipfile
+    from pathlib import Path
+    return Path, io, mo, pd, requests, zipfile
 
 
 @app.cell
@@ -27,23 +28,31 @@ def __(mo):
 
 
 @app.cell
-def __(io, pd, requests, zipfile):
-    # Download the election data
-    url = "https://www.volby.cz/opendata/ps2025/csv_od/pst4p.zip"
+def __(Path, io, pd, requests, zipfile):
+    # Cache file path
+    parquet_file = Path("election_data.parquet")
 
-    print("Downloading election data...")
-    response = requests.get(url)
-    response.raise_for_status()
+    # Check if cached data exists
+    if parquet_file.exists():
+        df = pd.read_parquet(parquet_file)
+    else:
+        # Download the election data
+        url = "https://www.volby.cz/opendata/ps2025/csv_od/pst4p.zip"
+        response = requests.get(url)
+        response.raise_for_status()
 
-    # Unzip and load the data
-    zip_file = zipfile.ZipFile(io.BytesIO(response.content))
-    csv_filename = zip_file.namelist()[0]
+        # Unzip and load the data
+        zip_file = zipfile.ZipFile(io.BytesIO(response.content))
+        csv_filename = zip_file.namelist()[0]
 
-    with zip_file.open(csv_filename) as f:
-        df = pd.read_csv(f)
+        with zip_file.open(csv_filename) as f:
+            df = pd.read_csv(f)
+
+        # Save to parquet for future use
+        df.to_parquet(parquet_file)
 
     df
-    return csv_filename, df, response, url, zip_file
+    return df, parquet_file
 
 
 @app.cell
