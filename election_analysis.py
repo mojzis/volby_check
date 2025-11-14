@@ -288,36 +288,40 @@ def __(mo, party_avg_votes, px, zero_vote_stats):
 
     # Create a bar chart showing average votes per commission
     avg_votes_chart = px.bar(
-        x=party_avg_votes.index,
+        x=party_avg_votes.index.astype(str),
         y=party_avg_votes.values,
         labels={'x': 'Party Code', 'y': 'Average Votes per Commission'},
         title='Average Votes per Commission for Top Parties',
         text=party_avg_votes.values.round(1)
     )
     avg_votes_chart.update_traces(textposition='outside')
-    avg_votes_chart.update_layout(showlegend=False, height=500)
+    avg_votes_chart.update_layout(showlegend=False, height=500, xaxis_type='category')
 
     mo.ui.plotly(avg_votes_chart)
     return (avg_votes_chart,)
 
 
 @app.cell
-def __(mo, px, zero_votes_df):
+def __(mo, pd, px, zero_votes_df):
     mo.md("### Distribution of Commission Sizes with 0 Votes per Party")
 
     # Create a box plot showing the distribution of commission sizes where parties got 0 votes
+    # Convert Party to string to ensure categorical treatment
+    box_data = zero_votes_df.copy()
+    box_data['Party'] = box_data['Party'].astype(str)
+
     box_chart = px.box(
-        zero_votes_df,
+        box_data,
         x='Party',
         y='Total_Votes_In_Commission',
         title='Distribution of Commission Sizes Where Parties Received 0 Votes',
         labels={'Party': 'Party Code', 'Total_Votes_In_Commission': 'Commission Size (Total Votes)'},
         points='outliers'
     )
-    box_chart.update_layout(height=600)
+    box_chart.update_layout(height=600, xaxis_type='category')
 
     mo.ui.plotly(box_chart)
-    return (box_chart,)
+    return box_chart, box_data
 
 
 @app.cell
@@ -325,8 +329,12 @@ def __(mo, px, zero_votes_df):
     mo.md("### Histogram: Commission Sizes with 0 Votes by Party")
 
     # Create histogram showing distribution of commission sizes for each party
+    # Convert Party to string to ensure categorical treatment
+    hist_data = zero_votes_df.copy()
+    hist_data['Party'] = hist_data['Party'].astype(str)
+
     histogram_chart = px.histogram(
-        zero_votes_df,
+        hist_data,
         x='Total_Votes_In_Commission',
         color='Party',
         title='Distribution of Commission Sizes Where Parties Received 0 Votes',
@@ -342,7 +350,7 @@ def __(mo, px, zero_votes_df):
     )
 
     mo.ui.plotly(histogram_chart)
-    return (histogram_chart,)
+    return hist_data, histogram_chart
 
 
 @app.cell
@@ -356,7 +364,7 @@ def __(go, mo, zero_vote_stats):
         x=zero_vote_stats['Party_Percentage'],
         y=zero_vote_stats['Count_of_Zero_Vote_Commissions'],
         mode='markers+text',
-        text=zero_vote_stats.index,
+        text=zero_vote_stats.index.astype(str),
         textposition='top center',
         marker=dict(
             size=zero_vote_stats['Max_Commission_Size'] / 10,
@@ -392,19 +400,23 @@ def __(biggest_zero_vote_commissions, go, mo):
     mo.md("### Biggest Commissions with 0 Votes by Party")
 
     # Create a horizontal bar chart showing the biggest commission with 0 votes for each party
+    # Convert Party to string to ensure categorical treatment
+    biggest_data = biggest_zero_vote_commissions.copy()
+    biggest_data['Party'] = biggest_data['Party'].astype(str)
+
     biggest_commission_chart = go.Figure(go.Bar(
-        x=biggest_zero_vote_commissions['Total_Votes_In_Commission'],
-        y=biggest_zero_vote_commissions['Party'],
+        x=biggest_data['Total_Votes_In_Commission'],
+        y=biggest_data['Party'],
         orientation='h',
-        text=biggest_zero_vote_commissions['Total_Votes_In_Commission'],
+        text=biggest_data['Total_Votes_In_Commission'],
         textposition='outside',
         marker=dict(
-            color=biggest_zero_vote_commissions['Total_Votes_In_Commission'],
+            color=biggest_data['Total_Votes_In_Commission'],
             colorscale='Reds',
             showscale=False
         ),
         hovertemplate='<b>%{y}</b><br>' +
-                      'Commission ID: ' + biggest_zero_vote_commissions['Commission_ID'].astype(str) + '<br>' +
+                      'Commission ID: ' + biggest_data['Commission_ID'].astype(str) + '<br>' +
                       'Total Votes: %{x}<br>' +
                       '<extra></extra>'
     ))
@@ -413,11 +425,12 @@ def __(biggest_zero_vote_commissions, go, mo):
         title='Largest Commission Where Each Party Received 0 Votes',
         xaxis_title='Commission Size (Total Votes)',
         yaxis_title='Party Code',
+        yaxis_type='category',
         height=500
     )
 
     mo.ui.plotly(biggest_commission_chart)
-    return (biggest_commission_chart,)
+    return biggest_commission_chart, biggest_data
 
 
 if __name__ == "__main__":
