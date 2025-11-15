@@ -75,7 +75,8 @@ party_summary = pd.DataFrame({
 })
 
 top_parties = party_summary.head(7).index.tolist()
-print(f"Top 7 parties: {', '.join(top_parties)}\n")
+top_parties_names = [f"{party_names.get(p, p)} ({p})" for p in top_parties]
+print(f"Top 7 parties: {', '.join(top_parties_names)}\n")
 
 # Calculate party performance by OBEC
 party_by_obec = df.groupby(['KSTRANA', 'OBEC'])['POC_HLASU'].agg(['sum', 'count']).reset_index()
