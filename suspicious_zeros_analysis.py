@@ -8,15 +8,12 @@ app = marimo.App(width="medium")
 def __():
     import marimo as mo
     import pandas as pd
-    import requests
-    import zipfile
-    import io
-    from pathlib import Path
     import plotly.express as px
     import plotly.graph_objects as go
     from scipy import stats
     import numpy as np
-    return Path, go, io, mo, np, pd, px, requests, stats, zipfile
+    import election_data_loader as edl
+    return edl, go, mo, np, pd, px, stats
 
 
 @app.cell
@@ -36,53 +33,17 @@ def __(mo):
 
 
 @app.cell
-def __(Path, io, pd, requests, zipfile):
-    # Cache file path
-    parquet_file = Path("election_data.parquet")
-
-    # Check if cached data exists
-    if parquet_file.exists():
-        df = pd.read_parquet(parquet_file)
-    else:
-        # Download the election data
-        url = "https://www.volby.cz/opendata/ps2025/csv_od/pst4p.zip"
-        response = requests.get(url)
-        response.raise_for_status()
-
-        # Unzip and load the data
-        zip_file = zipfile.ZipFile(io.BytesIO(response.content))
-        csv_filename = zip_file.namelist()[0]
-
-        with zip_file.open(csv_filename) as f:
-            df = pd.read_csv(f)
-
-        # Save to parquet for future use
-        df.to_parquet(parquet_file)
-
+def __(edl):
+    # Load election data using shared function
+    df = edl.load_election_data()
     df
-    return df, parquet_file
+    return (df,)
 
 
 @app.cell
-def __(df, pd):
-    # Calculate total votes per party across all commissions
-    party_totals = df.groupby('KSTRANA')['POC_HLASU'].sum().sort_values(ascending=False)
-
-    # Get total number of votes cast
-    total_votes = party_totals.sum()
-
-    # Calculate percentage for each party
-    party_percentages = (party_totals / total_votes * 100).round(4)
-
-    # Calculate probability (for binomial distribution)
-    party_probabilities = party_totals / total_votes
-
-    # Combine into a summary DataFrame
-    party_summary = pd.DataFrame({
-        'Total_Votes': party_totals,
-        'Percentage': party_percentages,
-        'Probability': party_probabilities
-    })
+def __(df, edl):
+    # Calculate party statistics using shared function
+    party_summary, party_totals, party_percentages, party_probabilities, total_votes = edl.calculate_party_statistics(df)
 
     party_summary.head(10)
     return (
@@ -95,42 +56,20 @@ def __(df, pd):
 
 
 @app.cell
-def __(party_summary):
-    # Get top 7 parties
-    top_parties = party_summary.head(7).index.tolist()
+def __(edl, party_summary):
+    # Get top 7 parties using shared function
+    top_parties = edl.get_top_parties(party_summary, n=7)
     top_parties
     return (top_parties,)
 
 
 @app.cell
-def __(df, pd, top_parties):
-    # Get all unique commissions and top parties
-    all_commissions = df['ID_OKRSKY'].unique()
-
-    # Create a DataFrame with all possible combinations of top parties and commissions
-    all_combinations = pd.MultiIndex.from_product(
-        [top_parties, all_commissions],
-        names=['Party', 'Commission_ID']
-    ).to_frame(index=False)
-
-    # Get actual combinations present in the data
-    actual_combinations = df[df['KSTRANA'].isin(top_parties)][['KSTRANA', 'ID_OKRSKY']].copy()
-    actual_combinations.columns = ['Party', 'Commission_ID']
-    actual_combinations['Present'] = True
-
-    # Merge to find missing combinations (where parties got 0 votes)
-    combined = all_combinations.merge(actual_combinations, on=['Party', 'Commission_ID'], how='left')
-    zero_votes = combined[combined['Present'].isna()][['Party', 'Commission_ID']].copy()
-
-    # Calculate total votes per commission (once, for all commissions)
-    commission_totals = df.groupby('ID_OKRSKY')['POC_HLASU'].sum().reset_index()
-    commission_totals.columns = ['Commission_ID', 'Total_Votes_In_Commission']
-
-    # Merge to get the total votes for each commission where a top party is missing
-    zero_votes_df = zero_votes.merge(commission_totals, on='Commission_ID')
+def __(df, edl, top_parties):
+    # Find zero-vote cases using shared function
+    zero_votes_df = edl.calculate_zero_vote_cases(df, top_parties)
 
     zero_votes_df
-    return all_combinations, commission_totals, zero_votes_df
+    return (zero_votes_df,)
 
 
 @app.cell

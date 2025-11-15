@@ -37,6 +37,46 @@ Enhanced analysis that adds geographic and demographic context using municipalit
 marimo edit suspicious_zeros_with_obec_analysis.py
 ```
 
+### 3. `compare_elections_2021_2025.py`
+Comparative analysis between 2021 and 2025 elections to identify trends and patterns.
+
+**Features:**
+- Loads data from multiple election years
+- Compares suspicious case rates across elections
+- Identifies whether patterns are improving or worsening
+- Validates analysis methodology consistency
+- Shows top suspicious cases from each year side-by-side
+
+**Run with:**
+```bash
+marimo edit compare_elections_2021_2025.py
+```
+
+### Shared Module: `election_data_loader.py`
+All notebooks use this shared module for consistent data loading and processing.
+
+**Key Functions:**
+- `load_election_data(year=2025)` - Load election results for any year
+- `load_municipality_data(year=2025)` - Load municipality information
+- `load_party_data(year=2025)` - Load party information
+- Processing functions for statistics, probabilities, and zero-vote detection
+
+## Multi-Year Analysis
+
+The data loader supports analyzing elections from different years:
+
+```python
+import election_data_loader as edl
+
+# Load 2025 election data
+df_2025 = edl.load_election_data(year=2025)
+
+# Load 2021 election data for comparison
+df_2021 = edl.load_election_data(year=2021)
+```
+
+Cache files are year-specific (e.g., `election_data_2025.parquet`, `election_data_2021.parquet`) so you can easily compare multiple elections without re-downloading data.
+
 ## How It Works
 
 ### Statistical Method
@@ -74,7 +114,7 @@ The enhanced analysis (file #2) is more accurate because:
 ## Key Visualizations
 
 ### 1. Probability Heatmap
-Shows -logÅÄ(P) for top 3 cases per party. Higher values = more suspicious.
+Shows -logÔøΩÔøΩ(P) for top 3 cases per party. Higher values = more suspicious.
 
 ### 2. Bubble Chart
 Commission size vs probability. Red points = suspicious (P < 1%).
