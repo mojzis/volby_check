@@ -46,11 +46,21 @@ def get_data_urls(year: int) -> dict:
         Dictionary with keys: 'election', 'municipality', 'party'
     """
     base_url = f"https://www.volby.cz/opendata/ps{year}/csv_od"
-    return {
-        'election': f"{base_url}/pst4p.zip",
-        'municipality': f"{base_url}/pscoco.csv",
-        'party': f"{base_url}/psrkl.csv"
-    }
+
+    # 2021 uses different filename format (with _csv_od suffix)
+    if year == 2021:
+        return {
+            'election': f"{base_url}/pst4p_csv_od.zip",
+            'municipality': f"{base_url}/pscoco.csv",
+            'party': f"{base_url}/psrkl.csv"
+        }
+    else:
+        # 2025 and other years use simpler format
+        return {
+            'election': f"{base_url}/pst4p.zip",
+            'municipality': f"{base_url}/pscoco.csv",
+            'party': f"{base_url}/psrkl.csv"
+        }
 
 
 def load_election_data(
