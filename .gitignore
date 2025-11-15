@@ -9,5 +9,7 @@ wheels/
 # Virtual environments
 .venv
 
-# Data cache
-*.parquet
+# Data cache files
+election_data.parquet
+pscoco.csv
+cvs.csv

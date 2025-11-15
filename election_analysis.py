@@ -12,7 +12,9 @@ def __():
     import zipfile
     import io
     from pathlib import Path
-    return Path, io, mo, pd, requests, zipfile
+    import plotly.express as px
+    import plotly.graph_objects as go
+    return Path, go, io, mo, pd, px, requests, zipfile
 
 
 @app.cell
@@ -147,35 +149,76 @@ def __(df, pd, top_parties):
 
 
 @app.cell
-def __(mo, party_summary, zero_votes_df):
+def __(df, mo, party_summary, top_parties, zero_votes_df):
     mo.md(
         """
-        ## Statistical Summary
+        ## Per-Party Detailed Analysis
 
-        Comparing the size of commissions where parties got 0 votes
+        Comprehensive statistics for each top party
         """
     )
 
-    # Group by party to see statistics
-    summary_by_party = zero_votes_df.groupby('Party').agg({
+    # Calculate average votes per commission for each party (only commissions where they appeared)
+    party_avg_votes = df[df['KSTRANA'].isin(top_parties)].groupby('KSTRANA')['POC_HLASU'].mean()
+
+    # Group by party to see zero-vote commission statistics
+    zero_vote_stats = zero_votes_df.groupby('Party').agg({
         'Commission_ID': 'count',
         'Total_Votes_In_Commission': ['mean', 'median', 'min', 'max', 'std']
     }).round(2)
 
-    summary_by_party.columns = ['Count_of_Zero_Vote_Commissions',
+    zero_vote_stats.columns = ['Count_of_Zero_Vote_Commissions',
                                   'Mean_Commission_Size',
                                   'Median_Commission_Size',
                                   'Min_Commission_Size',
                                   'Max_Commission_Size',
                                   'Std_Commission_Size']
 
+    # Add overall average votes per commission for each party
+    zero_vote_stats['Avg_Votes_Per_Commission'] = zero_vote_stats.index.map(
+        lambda x: party_avg_votes.get(x, 0)
+    ).round(2)
+
     # Add party percentage for context
-    summary_by_party['Party_Percentage'] = summary_by_party.index.map(
+    zero_vote_stats['Party_Percentage'] = zero_vote_stats.index.map(
         lambda x: party_summary.loc[x, 'Percentage']
     )
 
-    summary_by_party
-    return (summary_by_party,)
+    # Reorder columns for better readability
+    zero_vote_stats = zero_vote_stats[[
+        'Party_Percentage',
+        'Avg_Votes_Per_Commission',
+        'Count_of_Zero_Vote_Commissions',
+        'Max_Commission_Size',
+        'Mean_Commission_Size',
+        'Median_Commission_Size',
+        'Min_Commission_Size',
+        'Std_Commission_Size'
+    ]]
+
+    zero_vote_stats
+    return party_avg_votes, zero_vote_stats
+
+
+@app.cell
+def __(mo, zero_votes_df):
+    mo.md(
+        """
+        ## Biggest Commissions with 0 Votes per Party
+
+        For each party, showing the largest commission where they received 0 votes
+        """
+    )
+
+    # Find the biggest commission with 0 votes for each party
+    biggest_zero_vote_commissions = zero_votes_df.loc[
+        zero_votes_df.groupby('Party')['Total_Votes_In_Commission'].idxmax()
+    ][['Party', 'Commission_ID', 'Total_Votes_In_Commission']].sort_values(
+        'Total_Votes_In_Commission', ascending=False
+    )
+
+    biggest_zero_vote_commissions
+    return (biggest_zero_vote_commissions,)
 
 
 @app.cell
@@ -225,6 +268,212 @@ def __(commission_sizes, mo, zero_votes_df):
         print(f"✗ Commissions where parties got 0 votes are LARGER on average ({zero_vote_mean:.2f} vs {overall_mean:.2f})")
         print(f"  Difference: {zero_vote_mean - overall_mean:.2f} votes ({(zero_vote_mean/overall_mean - 1)*100:.1f}% larger)")
     return overall_mean, overall_median, zero_vote_mean, zero_vote_median
+
+
+@app.cell
+def __(mo):
+    mo.md(
+        """
+        # Interactive Visualizations
+
+        Explore the data through interactive charts
+        """
+    )
+    return
+
+
+@app.cell
+def __(mo, party_avg_votes, party_summary, pd, px, zero_vote_stats):
+    mo.md("### Average Votes per Commission by Party")
+
+    # Create a bar chart showing average votes per commission
+    # Create dataframe with party info sorted by percentage
+    avg_votes_df = pd.DataFrame({
+        'Party': party_avg_votes.index.astype(str),
+        'Avg_Votes': party_avg_votes.values,
+        'Percentage': party_avg_votes.index.map(lambda x: party_summary.loc[x, 'Percentage'])
+    }).sort_values('Percentage', ascending=False)
+
+    avg_votes_df['Party_Label'] = avg_votes_df.apply(
+        lambda row: f"{row['Party']} ({row['Percentage']:.1f}%)", axis=1
+    )
+
+    avg_votes_chart = px.bar(
+        avg_votes_df,
+        x='Party_Label',
+        y='Avg_Votes',
+        labels={'Party_Label': 'Party Code (Vote %)', 'Avg_Votes': 'Average Votes per Commission'},
+        title='Average Votes per Commission for Top Parties (ordered by party support)',
+        text='Avg_Votes'
+    )
+    avg_votes_chart.update_traces(textposition='outside', texttemplate='%{text:.1f}')
+    avg_votes_chart.update_layout(showlegend=False, height=500, xaxis_type='category')
+
+    mo.ui.plotly(avg_votes_chart)
+    return avg_votes_chart, avg_votes_df
+
+
+@app.cell
+def __(mo, party_summary, pd, px, zero_votes_df):
+    mo.md("### Distribution of Commission Sizes with 0 Votes per Party")
+
+    # Create a box plot showing the distribution of commission sizes where parties got 0 votes
+    # Get party percentages and sort parties by percentage (descending)
+    party_pct_map = party_summary['Percentage'].to_dict()
+
+    box_data = zero_votes_df.copy()
+    box_data['Party'] = box_data['Party'].astype(str)
+    box_data['Party_Pct'] = box_data['Party'].astype(int).map(party_pct_map)
+
+    # Create labels with party code and percentage
+    box_data['Party_Label'] = box_data.apply(
+        lambda row: f"{row['Party']} ({row['Party_Pct']:.1f}%)", axis=1
+    )
+
+    # Sort parties by percentage for ordering
+    party_order = box_data.groupby('Party_Label')['Party_Pct'].first().sort_values(ascending=False).index.tolist()
+
+    box_chart = px.box(
+        box_data,
+        x='Party_Label',
+        y='Total_Votes_In_Commission',
+        title='Distribution of Commission Sizes Where Parties Received 0 Votes (ordered by party support)',
+        labels={'Party_Label': 'Party Code (Vote %)', 'Total_Votes_In_Commission': 'Commission Size (Total Votes)'},
+        points='outliers',
+        category_orders={'Party_Label': party_order}
+    )
+    box_chart.update_layout(height=600, xaxis_type='category')
+
+    mo.ui.plotly(box_chart)
+    return box_chart, box_data, party_order
+
+
+@app.cell
+def __(mo, party_summary, px, zero_votes_df):
+    mo.md("### Histogram: Commission Sizes with 0 Votes by Party")
+
+    # Create histogram showing distribution of commission sizes for each party
+    # Get party percentages for labeling
+    party_pct_map_hist = party_summary['Percentage'].to_dict()
+
+    hist_data = zero_votes_df.copy()
+    hist_data['Party'] = hist_data['Party'].astype(str)
+    hist_data['Party_Pct'] = hist_data['Party'].astype(int).map(party_pct_map_hist)
+
+    # Create labels with party code and percentage
+    hist_data['Party_Label'] = hist_data.apply(
+        lambda row: f"{row['Party']} ({row['Party_Pct']:.1f}%)", axis=1
+    )
+
+    # Sort for legend order
+    party_order_hist = hist_data.groupby('Party_Label')['Party_Pct'].first().sort_values(ascending=False).index.tolist()
+
+    histogram_chart = px.histogram(
+        hist_data,
+        x='Total_Votes_In_Commission',
+        color='Party_Label',
+        title='Distribution of Commission Sizes Where Parties Received 0 Votes (ordered by party support)',
+        labels={'Total_Votes_In_Commission': 'Commission Size (Total Votes)', 'Party_Label': 'Party Code (Vote %)'},
+        nbins=50,
+        opacity=0.7,
+        category_orders={'Party_Label': party_order_hist}
+    )
+    histogram_chart.update_layout(
+        barmode='overlay',
+        height=600,
+        xaxis_title='Commission Size (Total Votes)',
+        yaxis_title='Count'
+    )
+
+    mo.ui.plotly(histogram_chart)
+    return hist_data, histogram_chart, party_order_hist
+
+
+@app.cell
+def __(go, mo, zero_vote_stats):
+    mo.md("### Comparison: Party Performance vs Zero-Vote Commissions")
+
+    # Create a scatter plot comparing party percentage vs zero-vote commission characteristics
+    scatter_chart = go.Figure()
+
+    scatter_chart.add_trace(go.Scatter(
+        x=zero_vote_stats['Party_Percentage'],
+        y=zero_vote_stats['Count_of_Zero_Vote_Commissions'],
+        mode='markers+text',
+        text=zero_vote_stats.index.astype(str),
+        textposition='top center',
+        marker=dict(
+            size=zero_vote_stats['Max_Commission_Size'] / 10,
+            color=zero_vote_stats['Mean_Commission_Size'],
+            colorscale='Viridis',
+            showscale=True,
+            colorbar=dict(title='Mean Commission<br>Size (votes)')
+        ),
+        name='Parties'
+    ))
+
+    scatter_chart.update_layout(
+        title='Party Support vs Number of Zero-Vote Commissions',
+        xaxis_title='Party Vote Percentage (%)',
+        yaxis_title='Number of Commissions with 0 Votes',
+        height=600,
+        hovermode='closest'
+    )
+
+    scatter_chart.update_traces(
+        hovertemplate='<b>%{text}</b><br>' +
+                      'Vote %: %{x:.2f}%<br>' +
+                      'Zero-vote commissions: %{y}<br>' +
+                      '<extra></extra>'
+    )
+
+    mo.ui.plotly(scatter_chart)
+    return (scatter_chart,)
+
+
+@app.cell
+def __(biggest_zero_vote_commissions, go, mo, party_summary):
+    mo.md("### Biggest Commissions with 0 Votes by Party")
+
+    # Create a horizontal bar chart showing the biggest commission with 0 votes for each party
+    # Add party percentages and sort
+    biggest_data = biggest_zero_vote_commissions.copy()
+    biggest_data['Party'] = biggest_data['Party'].astype(str)
+    biggest_data['Party_Pct'] = biggest_data['Party'].astype(int).map(party_summary['Percentage'].to_dict())
+    biggest_data['Party_Label'] = biggest_data.apply(
+        lambda row: f"{row['Party']} ({row['Party_Pct']:.1f}%)", axis=1
+    )
+
+    # Sort by percentage (descending) to match other charts
+    biggest_data = biggest_data.sort_values('Party_Pct', ascending=True)  # True for horizontal bar to show high % at top
+
+    biggest_commission_chart = go.Figure(go.Bar(
+        x=biggest_data['Total_Votes_In_Commission'],
+        y=biggest_data['Party_Label'],
+        orientation='h',
+        text=biggest_data['Total_Votes_In_Commission'],
+        textposition='outside',
+        marker=dict(
+            color=biggest_data['Total_Votes_In_Commission'],
+            colorscale='Reds',
+            showscale=False
+        ),
+        hovertemplate='<b>%{y}</b><br>' +
+                      'Commission ID: ' + biggest_data['Commission_ID'].astype(str) + '<br>' +
+                      'Total Votes: %{x}<br>' +
+                      '<extra></extra>'
+    ))
+
+    biggest_commission_chart.update_layout(
+        title='Largest Commission Where Each Party Received 0 Votes (ordered by party support)',
+        xaxis_title='Commission Size (Total Votes)',
+        yaxis_title='Party Code (Vote %)',
+        yaxis_type='category',
+        height=500
+    )
+
+    mo.ui.plotly(biggest_commission_chart)
+    return biggest_commission_chart, biggest_data
 
 
 if __name__ == "__main__":
