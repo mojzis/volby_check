@@ -12,4 +12,5 @@ wheels/
 # Data cache files
 # election_data.parquet - now committed to repo to avoid repeated downloads
 pscoco.csv
+psrkl.csv
 cvs.csv
