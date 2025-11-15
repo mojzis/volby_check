@@ -34,18 +34,7 @@ def __():
 
 @app.cell
 def __(mo):
-    mo.md(
-        """
-        # Suspicious Zero-Vote Analysis with Geographic Context
-
-        ## Statistical Analysis with Municipality Size
-
-        This analysis enhances the probability-based detection by adding geographic context:
-        - Municipality (OBEC) size information
-        - Party performance by municipality size category
-        - Detection of suspicious patterns in areas where parties should be strong
-        """
-    )
+    mo.md("# Zero-Vote Analysis with Geographic Context")
     return
 
 
@@ -84,14 +73,7 @@ def __(Path, io, pd, requests, zipfile):
 
 @app.cell
 def __(df, mo):
-    mo.md(
-        """
-        ## Municipality (OBEC) Analysis
-
-        Exploring the size distribution of municipalities and calculating
-        voting patterns by municipality size.
-        """
-    )
+    mo.md("## Municipality (OBEC) Analysis")
 
     # Calculate municipality sizes based on total votes
     municipality_sizes = df.groupby('OBEC').agg({
@@ -273,26 +255,7 @@ def __(df_with_size, municipality_sizes, pd, party_by_obec, party_by_size, top_p
 
 @app.cell
 def __(mo):
-    mo.md(
-        """
-        ## Enhanced Probability Calculation with OBEC-Specific Adjustment
-
-        Now using **three-tier probability hierarchy** (most accurate first):
-
-        **P(0 votes) = (1 - p)^n**
-
-        Where p is chosen from:
-        1. **p_obec** = party's vote probability in this specific municipality (most accurate)
-        2. **p_category** = party's vote probability in municipalities of this size
-        3. **p_overall** = party's overall national vote probability
-
-        And n = total votes in the commission
-
-        This accounts for local variations: e.g., if a party is extremely unpopular
-        in a specific municipality (like a rural party in the capital), getting zero
-        votes in one commission there may not be suspicious at all.
-        """
-    )
+    mo.md("## Three-Tier Probability Calculation")
     return
 
 
@@ -348,13 +311,7 @@ def __(party_summary, pd, zero_votes_df):
 
 @app.cell
 def __(mo, prob_analysis):
-    mo.md(
-        """
-        ## Top 3 Biggest Zero-Vote Commissions Per Party
-
-        With municipality size context
-        """
-    )
+    mo.md("## Top 3 Biggest Zero-Vote Commissions Per Party")
 
     # Get top 3 biggest zero-vote commissions per party
     top3_per_party = (
@@ -393,13 +350,7 @@ def __(mo, prob_analysis):
 
 @app.cell
 def __(mo, top3_per_party):
-    mo.md(
-        """
-        ## Summary of Suspicious Cases by Municipality Size
-
-        Breakdown by municipality size category
-        """
-    )
+    mo.md("## Summary of Suspicious Cases")
 
     suspicious_cases = top3_per_party[top3_per_party['Is_Suspicious']].copy()
 
@@ -433,13 +384,7 @@ def __(mo, top3_per_party):
 
 @app.cell
 def __(mo):
-    mo.md(
-        """
-        # Interactive Visualizations
-
-        Enhanced charts with municipality size context
-        """
-    )
+    mo.md("# Interactive Visualizations")
     return
 
 
@@ -753,50 +698,6 @@ def __(mo, px, suspicious_cases):
 
     mo.ui.plotly(size_dist_fig)
     return size_dist_fig, susp_by_size
-
-
-@app.cell
-def __(mo):
-    mo.md(
-        """
-        ## Key Insights with OBEC-Specific Geographic Context
-
-        ### What the Three-Tier Analysis Shows:
-
-        1. **OBEC-Specific Probabilities (Most Accurate)**: Accounts for local political
-           preferences. If a party gets 0.5% in a specific municipality overall, getting
-           zero in one commission there is NOT suspicious - it's expected!
-
-        2. **Size-Adjusted Probabilities**: Parties perform differently in cities vs towns.
-           A zero in a large city for an urban party is MORE suspicious than using
-           overall national probability would suggest.
-
-        3. **Overall Probabilities (Baseline)**: National-level expectations, but can be
-           misleading for parties with strong regional variations.
-
-        ### Example:
-        - A small party gets 8% nationally
-        - But only 0.2% in the capital (they're very unpopular there)
-        - Getting zero votes in one commission in the capital: **Not suspicious**
-        - The OBEC-specific adjustment correctly identifies this as expected
-
-        ### Red Flags to Look For:
-
-        - **Party getting 0 where they're locally STRONG** (high Vote_Share_In_OBEC): Highly suspicious
-        - **Urban party getting 0 in their stronghold cities**: Highly suspicious
-        - **Rural party getting 0 in their stronghold towns**: Highly suspicious
-        - **Very low OBEC-adjusted probabilities** (< 0.1%): Nearly impossible by chance
-        - Zeros in areas where party is weak: Often NOT suspicious
-
-        ### Interpretation:
-
-        - **Local context is crucial**: OBEC-specific probabilities filter out false positives
-        - **Vote_Share_In_OBEC is key**: Look at this column to understand if zero is expected
-        - **Hierarchy matters**: OBEC-specific → Size-Category → Overall (in order of accuracy)
-        - **Pattern detection**: Look for systematic issues in party strongholds, not just individual cases
-        """
-    )
-    return
 
 
 if __name__ == "__main__":

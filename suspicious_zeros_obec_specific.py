@@ -34,26 +34,7 @@ def __():
 
 @app.cell
 def __(mo):
-    mo.md(
-        """
-        # OBEC-Specific Zero-Vote Analysis
-
-        ## The Most Accurate Probability Model
-
-        This analysis uses **municipality-specific (OBEC) probabilities** - the most granular and accurate approach:
-
-        ### Three Levels of Accuracy:
-        1. **Overall National Probability**: Party's overall vote share across the country
-        2. **Size-Category Adjusted**: Party's performance in similar-sized municipalities
-        3. **OBEC-Specific** (this notebook): Party's actual performance in the exact municipality
-
-        ### Why OBEC-Specific is Best:
-        - A party might be very unpopular in Prague (capital) but strong in rural areas
-        - Getting 0 votes in one Prague commission when the party gets <1% there overall is NOT suspicious
-        - But getting 0 votes in a small town where they usually get 15% is HIGHLY suspicious
-        - This captures local political preferences that size categories miss
-        """
-    )
+    mo.md("# OBEC-Specific Zero-Vote Analysis")
     return
 
 
@@ -92,13 +73,7 @@ def __(Path, io, pd, requests, zipfile):
 
 @app.cell
 def __(df, mo):
-    mo.md(
-        """
-        ## Municipality (OBEC) Characterization
-
-        First, let's understand the municipalities and categorize them by size.
-        """
-    )
+    mo.md("## Municipality (OBEC) Characterization")
 
     # Calculate municipality sizes based on total votes
     municipality_sizes = df.groupby('OBEC').agg({
@@ -194,14 +169,7 @@ def __(party_summary):
 
 @app.cell
 def __(df_with_size, mo, party_by_obec, pd, top_parties):
-    mo.md(
-        """
-        ## Finding Zero-Vote Cases with OBEC Context
-
-        Identifying commissions where top parties got 0 votes, and calculating
-        what we'd expect based on their performance in that specific municipality.
-        """
-    )
+    mo.md("## Finding Zero-Vote Cases with OBEC Context")
 
     # Get all unique commissions and top parties
     all_commissions = df_with_size['ID_OKRSKY'].unique()
@@ -263,24 +231,7 @@ def __(df_with_size, mo, party_by_obec, pd, top_parties):
 
 @app.cell
 def __(mo):
-    mo.md(
-        """
-        ## OBEC-Specific Probability Calculation
-
-        **P(0 votes) = (1 - p_obec)^n**
-
-        Where:
-        - **p_obec** = party's vote probability in this exact municipality
-        - **n** = total votes in the commission
-
-        ### Key Insight:
-        If a party NEVER appeared in a municipality (p_obec is NaN), that means they got 0 votes
-        across ALL commissions there. This is not suspicious - it indicates genuine lack of support.
-
-        We'll focus on cases where the party IS present in the municipality overall,
-        but mysteriously got 0 in one specific commission.
-        """
-    )
+    mo.md("## OBEC-Specific Probability Calculation")
     return
 
 
@@ -342,38 +293,25 @@ def __(party_summary, pd, zero_votes_df):
 
 @app.cell
 def __(mo, prob_analysis):
-    mo.md(
-        """
-        ## Most Suspicious Cases with OBEC Context
-
-        These are commissions where:
-        1. The party IS active in the municipality (has votes in other commissions)
-        2. But got 0 votes in this specific commission
-        3. The probability of this happening by chance is < 1%
-        """
-    )
+    mo.md("## Most Suspicious Cases (OBEC-Adjusted)")
 
     # Show most suspicious cases with OBEC data
     most_suspicious = prob_analysis[
         prob_analysis['Used_OBEC_Probability']
-    ].sort_values('Probability_of_Zero').head(20)[[
+    ].sort_values('Probability_of_Zero').head(30)[[
         'Party',
         'Party_Percentage',
         'OBEC',
-        'Municipality_Size_Category',
         'Commission_ID',
         'Total_Votes_In_Commission',
         'Vote_Share_In_OBEC',
         'Probability_of_Zero_OBEC',
-        'Probability_of_Zero_Overall',
         'Is_Suspicious',
         'Is_Highly_Suspicious'
     ]].copy()
 
-    most_suspicious['Improvement_Factor'] = (
-        most_suspicious['Probability_of_Zero_Overall'] /
-        most_suspicious['Probability_of_Zero_OBEC']
-    )
+    print(f"Total suspicious cases (P < 1%): {prob_analysis['Is_Suspicious'].sum()}")
+    print(f"Highly suspicious (P < 0.1%): {prob_analysis['Is_Highly_Suspicious'].sum()}")
 
     most_suspicious
     return (most_suspicious,)
@@ -381,41 +319,19 @@ def __(mo, prob_analysis):
 
 @app.cell
 def __(mo, prob_analysis):
-    mo.md("### Cases Where Party Never Appeared in Municipality")
+    mo.md("### Cases Where Party Never Appeared in Municipality (Not Suspicious)")
 
     # These are NOT suspicious - party has no support there
-    never_appeared = prob_analysis[
-        ~prob_analysis['Used_OBEC_Probability']
-    ].sort_values('Total_Votes_In_Commission', ascending=False).head(20)[[
-        'Party',
-        'Party_Percentage',
-        'OBEC',
-        'Municipality_Size_Category',
-        'Commission_ID',
-        'Total_Votes_In_Commission',
-        'Probability_of_Zero_Overall'
-    ]]
+    never_appeared_count = len(prob_analysis[~prob_analysis['Used_OBEC_Probability']])
 
-    mo.md(f"""
-    Found **{len(prob_analysis[~prob_analysis['Used_OBEC_Probability']])}** cases where the party
-    got 0 votes in the commission AND never appeared anywhere in that municipality.
-
-    These are NOT suspicious - they indicate genuine lack of local support.
-    """)
-
-    never_appeared
-    return (never_appeared,)
+    print(f"Cases where party got 0 votes across ALL commissions in municipality: {never_appeared_count}")
+    print("(These are NOT suspicious - party has no local support)")
+    return ()
 
 
 @app.cell
 def __(mo):
-    mo.md(
-        """
-        # Visualizations: OBEC-Specific Analysis
-
-        Enhanced charts showing the accuracy improvement from OBEC-specific probabilities.
-        """
-    )
+    mo.md("# Visualizations")
     return
 
 
@@ -593,22 +509,9 @@ def __(mo, prob_analysis, px):
 
 @app.cell
 def __(improvement_data, mo):
-    mo.md(
-        f"""
-        ### Key Statistics on Improvement
-
-        - **Median improvement factor**: {improvement_data['Improvement_Factor'].median():.2f}x
-        - **Mean improvement factor**: {improvement_data['Improvement_Factor'].mean():.2f}x
-        - **Cases where OBEC-specific is LESS suspicious** (ratio > 1): {(improvement_data['Improvement_Factor'] > 1).sum()}
-        - **Cases where OBEC-specific is MORE suspicious** (ratio < 1): {(improvement_data['Improvement_Factor'] < 1).sum()}
-
-        **Interpretation**:
-        - Ratio > 1: Using overall probability overestimates suspiciousness (party is weaker in this municipality)
-        - Ratio < 1: Using overall probability underestimates suspiciousness (party is stronger in this municipality)
-        - Most cases have ratio > 1, meaning OBEC-specific probabilities correctly identify many "false alarms"
-        """
-    )
-    return
+    print(f"Median improvement factor: {improvement_data['Improvement_Factor'].median():.2f}x")
+    print(f"Mean improvement factor: {improvement_data['Improvement_Factor'].mean():.2f}x")
+    return ()
 
 
 @app.cell
@@ -636,41 +539,6 @@ def __(mo, prob_analysis, px):
 
     mo.ui.plotly(support_fig)
     return obec_support, support_fig
-
-
-@app.cell
-def __(mo):
-    mo.md(
-        """
-        ## Key Insights: OBEC-Specific Analysis
-
-        ### What We Learned:
-
-        1. **Local Context Matters Critically**
-           - Many "suspicious" cases using overall probability are actually normal when considering local support
-           - A party getting 0 votes where they typically get <1% is not suspicious at all
-
-        2. **False Alarm Reduction**
-           - OBEC-specific probabilities dramatically reduce false positives
-           - Focuses attention on truly anomalous cases
-
-        3. **Real Suspicious Cases Stand Out**
-           - When a party gets 0 votes in a commission but normally gets 10-15% in that municipality: HIGHLY suspicious
-           - These are the cases that warrant investigation
-
-        4. **Party Never Present = Not Suspicious**
-           - If a party got 0 votes across ALL commissions in a municipality, that's genuine lack of support
-           - Only suspicious when they're strong elsewhere in the same municipality
-
-        ### Recommendations:
-
-        - **Use OBEC-specific probabilities** for the most accurate suspiciousness assessment
-        - **Ignore cases** where the party never appeared in the municipality
-        - **Investigate cases** where P(0) < 0.1% AND the party typically gets >5% in that municipality
-        - **Look for patterns**: Multiple suspicious commissions in the same municipality is especially concerning
-        """
-    )
-    return
 
 
 if __name__ == "__main__":
