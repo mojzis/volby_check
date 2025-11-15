@@ -143,6 +143,26 @@ def __(df, municipality_sizes, pd):
 
 @app.cell
 def __(df_with_size, pd):
+    # Calculate party performance by OBEC (municipality-specific)
+    party_by_obec = df_with_size.groupby(['KSTRANA', 'OBEC'])['POC_HLASU'].agg([
+        'sum', 'count'
+    ]).reset_index()
+    party_by_obec.columns = ['Party', 'OBEC', 'Total_Votes', 'Num_Appearances']
+
+    # Calculate total votes per OBEC to get party's share in each municipality
+    obec_totals = df_with_size.groupby('OBEC')['POC_HLASU'].sum().reset_index()
+    obec_totals.columns = ['OBEC', 'OBEC_Total_Votes']
+
+    party_by_obec = party_by_obec.merge(obec_totals, on='OBEC')
+    party_by_obec['Vote_Share_In_OBEC'] = party_by_obec['Total_Votes'] / party_by_obec['OBEC_Total_Votes'] * 100
+    party_by_obec['Probability_In_OBEC'] = party_by_obec['Vote_Share_In_OBEC'] / 100
+
+    party_by_obec
+    return (party_by_obec,)
+
+
+@app.cell
+def __(df_with_size, pd):
     # Calculate total votes per party across all commissions
     party_totals = df_with_size.groupby('KSTRANA')['POC_HLASU'].sum().sort_values(ascending=False)
 
@@ -181,7 +201,7 @@ def __(party_summary):
 
 
 @app.cell
-def __(df_with_size, municipality_sizes, pd, party_by_size, top_parties):
+def __(df_with_size, municipality_sizes, pd, party_by_obec, party_by_size, top_parties):
     # Get all unique commissions and top parties
     all_commissions = df_with_size['ID_OKRSKY'].unique()
 
@@ -232,6 +252,13 @@ def __(df_with_size, municipality_sizes, pd, party_by_size, top_parties):
         party_prob_by_size[['Party', 'Size_Category', 'Probability_In_Category', 'Vote_Share_In_Category']],
         left_on=['Party', 'Municipality_Size_Category'],
         right_on=['Party', 'Size_Category'],
+        how='left'
+    )
+
+    # Merge OBEC-specific party probabilities (most accurate)
+    zero_votes_df = zero_votes_df.merge(
+        party_by_obec[['Party', 'OBEC', 'Vote_Share_In_OBEC', 'Probability_In_OBEC']],
+        on=['Party', 'OBEC'],
         how='left'
     )
 
