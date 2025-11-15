@@ -332,7 +332,6 @@ def __(go, mo, np, party_summary, top3_per_party):
         hovertemplate='%{text}<extra></extra>',
         colorbar=dict(
             title='-log₁₀(P)',
-            titleside='right',
             tickmode='linear',
             tick0=0,
             dtick=10
@@ -505,8 +504,6 @@ def __(go, mo, top3_per_party):
 
     # Calculate a suspiciousness score for each party
     # Score = sum of -log10(probability) for their top 3 cases
-    import numpy as np
-
     suspicion_scores = (
         top3_per_party
         .groupby('Party')

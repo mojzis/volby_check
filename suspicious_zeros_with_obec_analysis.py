@@ -207,7 +207,7 @@ def __(df_with_size, municipality_sizes, pd, party_by_size, top_parties):
         'POC_HLASU': 'sum',
         'OBEC': 'first',
         'Size_Category': 'first',
-        'Total_Votes_Municipality': 'first'
+        'Total_Votes': 'first'
     }).reset_index()
     commission_info.columns = [
         'Commission_ID',
@@ -553,7 +553,6 @@ def __(go, mo, np, top3_per_party):
         hovertemplate='%{text}<extra></extra>',
         colorbar=dict(
             title='-log₁₀(P)',
-            titleside='right',
             tickmode='linear',
             tick0=0,
             dtick=10
