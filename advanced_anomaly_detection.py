@@ -91,32 +91,72 @@ def __(pd, requests, BytesIO, ZipFile):
 
 
 @app.cell
-def __(pd, requests, BytesIO, ZipFile):
+def __(pd, requests, BytesIO, ZipFile, os):
     # Load municipality names
-    obec_url = "https://www.volby.cz/opendata/ps2021/pscoco.csv"
-    obec_response = requests.get(obec_url)
+    municipalities_file = "pscoco.csv"
+    parties_file = "psrkl.csv"
 
-    obec_df = pd.read_csv(
-        BytesIO(obec_response.content),
-        encoding='cp1250',
-        delimiter=';',
-        dtype={'OBEC': str}
-    )
+    # Try to load from cache first, then download
+    if os.path.exists(municipalities_file):
+        print(f"Loading cached municipalities from {municipalities_file}")
+        try:
+            obec_df = pd.read_csv(municipalities_file, encoding='utf-8', delimiter=';', dtype={'OBEC': str})
+        except:
+            obec_df = pd.read_csv(municipalities_file, encoding='cp1250', delimiter=';', dtype={'OBEC': str})
+    else:
+        try:
+            obec_url = "https://www.volby.cz/opendata/ps2025/csv_od/pscoco.csv"
+            obec_response = requests.get(obec_url)
+            obec_response.raise_for_status()  # Raise error for bad status codes
+
+            obec_df = pd.read_csv(
+                BytesIO(obec_response.content),
+                encoding='cp1250',
+                delimiter=';',
+                dtype={'OBEC': str}
+            )
+            # Cache the file
+            obec_df.to_csv(municipalities_file, encoding='utf-8', sep=';', index=False)
+            print(f"Downloaded and cached municipalities to {municipalities_file}")
+        except Exception as e:
+            print(f"Warning: Could not load municipality data: {e}")
+            # Create minimal fallback dataframe
+            obec_df = pd.DataFrame({'OBEC': []})
 
     # Load party names
-    party_url = "https://www.volby.cz/opendata/ps2021/psrkl.csv"
-    party_response = requests.get(party_url)
+    if os.path.exists(parties_file):
+        print(f"Loading cached parties from {parties_file}")
+        try:
+            party_df = pd.read_csv(parties_file, encoding='utf-8', delimiter=';', dtype={'KSTRANA': str})
+        except:
+            party_df = pd.read_csv(parties_file, encoding='cp1250', delimiter=';', dtype={'KSTRANA': str})
+    else:
+        try:
+            party_url = "https://www.volby.cz/opendata/ps2025/csv_od/psrkl.csv"
+            party_response = requests.get(party_url)
+            party_response.raise_for_status()
 
-    party_df = pd.read_csv(
-        BytesIO(party_response.content),
-        encoding='cp1250',
-        delimiter=';',
-        dtype={'KSTRANA': str}
-    )
+            party_df = pd.read_csv(
+                BytesIO(party_response.content),
+                encoding='cp1250',
+                delimiter=';',
+                dtype={'KSTRANA': str}
+            )
+            # Cache the file
+            party_df.to_csv(parties_file, encoding='utf-8', sep=';', index=False)
+            print(f"Downloaded and cached parties to {parties_file}")
+        except Exception as e:
+            print(f"Warning: Could not load party data: {e}")
+            # Create minimal fallback dataframe
+            party_df = pd.DataFrame({'KSTRANA': []})
 
     print(f"Loaded {len(obec_df):,} municipalities")
+    if len(obec_df) > 0:
+        print(f"Municipality columns: {list(obec_df.columns)}")
     print(f"Loaded {len(party_df):,} parties")
-    return obec_df, party_df, obec_url, obec_response, party_url, party_response
+    if len(party_df) > 0:
+        print(f"Party columns: {list(party_df.columns)}")
+    return obec_df, party_df, municipalities_file, parties_file
 
 
 @app.cell
@@ -526,12 +566,30 @@ def __(commission_final, obec_df, pd):
     # Get top 100 most suspicious commissions
     top_suspicious = commission_final.nlargest(100, 'CompositeScore').copy()
 
-    # Add municipality names
-    top_suspicious = top_suspicious.merge(
-        obec_df[['OBEC', 'NAZEVOBCE']],
-        on='OBEC',
-        how='left'
-    )
+    # Add municipality names if available
+    obec_merge_cols = []
+    if 'OBEC' in obec_df.columns:
+        obec_merge_cols.append('OBEC')
+    # Check for municipality name column (could be NAZEVOBCE, NAZEV, or similar)
+    obec_name_col_found = None
+    for possible_obec_col in ['NAZEVOBCE', 'NAZEV', 'NAZEVOB', 'OBEC_NAZEV']:
+        if possible_obec_col in obec_df.columns:
+            obec_name_col_found = possible_obec_col
+            break
+
+    if obec_merge_cols and obec_name_col_found:
+        obec_merge_cols.append(obec_name_col_found)
+        top_suspicious = top_suspicious.merge(
+            obec_df[obec_merge_cols],
+            on='OBEC',
+            how='left'
+        )
+        # Rename to standard name for consistency
+        if obec_name_col_found != 'NAZEVOBCE':
+            top_suspicious = top_suspicious.rename(columns={obec_name_col_found: 'NAZEVOBCE'})
+    else:
+        # If no name column found, use OBEC as the display name
+        top_suspicious['NAZEVOBCE'] = top_suspicious['OBEC']
 
     # Select relevant columns for display
     display_cols = [
@@ -668,24 +726,56 @@ def __(df, major_party_cols, commission_final, party_df, obec_df, pd):
 
     zero_cases_df = pd.DataFrame(zero_cases)
 
-    # Add party names
-    zero_cases_df = zero_cases_df.merge(
-        party_df[['KSTRANA', 'ZKRATKAV8']],
-        left_on='Party',
-        right_on='KSTRANA',
-        how='left'
-    )
+    # Add party names if available
+    # Check for party short name column (could be ZKRATKAV8, ZKRATKA, etc.)
+    party_name_col_found = None
+    for possible_party_col in ['ZKRATKAV8', 'ZKRATKA', 'ZKRATKAV30', 'NAZEVSTR']:
+        if possible_party_col in party_df.columns:
+            party_name_col_found = possible_party_col
+            break
 
-    # Add municipality names
-    zero_cases_df = zero_cases_df.merge(
-        obec_df[['OBEC', 'NAZEVOBCE']],
-        on='OBEC',
-        how='left'
-    )
+    if 'KSTRANA' in party_df.columns and party_name_col_found:
+        party_merge_df = party_df[['KSTRANA', party_name_col_found]].copy()
+        zero_cases_df = zero_cases_df.merge(
+            party_merge_df,
+            left_on='Party',
+            right_on='KSTRANA',
+            how='left'
+        )
+        # Rename to standard name for consistency
+        if party_name_col_found != 'ZKRATKAV8':
+            zero_cases_df = zero_cases_df.rename(columns={party_name_col_found: 'ZKRATKAV8'})
+    else:
+        # If no party name found, use party code as the display name
+        zero_cases_df['ZKRATKAV8'] = zero_cases_df['Party']
+
+    # Add municipality names if available
+    obec_name_col_for_zeros = None
+    for possible_obec_col_zero in ['NAZEVOBCE', 'NAZEV', 'NAZEVOB', 'OBEC_NAZEV']:
+        if possible_obec_col_zero in obec_df.columns:
+            obec_name_col_for_zeros = possible_obec_col_zero
+            break
+
+    if 'OBEC' in obec_df.columns and obec_name_col_for_zeros:
+        obec_merge_df = obec_df[['OBEC', obec_name_col_for_zeros]].copy()
+        zero_cases_df = zero_cases_df.merge(
+            obec_merge_df,
+            on='OBEC',
+            how='left'
+        )
+        # Rename to standard name for consistency
+        if obec_name_col_for_zeros != 'NAZEVOBCE':
+            zero_cases_df = zero_cases_df.rename(columns={obec_name_col_for_zeros: 'NAZEVOBCE'})
+    else:
+        # If no name column found, use OBEC as the display name
+        zero_cases_df['NAZEVOBCE'] = zero_cases_df['OBEC']
 
     print(f"Total zero-vote cases for major parties: {len(zero_cases_df):,}")
     print(f"\nZero cases by party:")
-    print(zero_cases_df.groupby('ZKRATKAV8').size().sort_values(ascending=False))
+    if 'ZKRATKAV8' in zero_cases_df.columns:
+        print(zero_cases_df.groupby('ZKRATKAV8').size().sort_values(ascending=False))
+    else:
+        print(zero_cases_df.groupby('Party').size().sort_values(ascending=False))
     return zero_cases, zero_cases_df
 
 
