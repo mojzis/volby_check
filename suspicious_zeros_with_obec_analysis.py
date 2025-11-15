@@ -14,6 +14,11 @@ def __():
     import numpy as np
     from plotly.subplots import make_subplots
     import election_data_loader as edl
+
+    # Configure pandas display for HTML export (disable pager, limit rows)
+    pd.set_option('display.max_rows', 30)
+    pd.set_option('display.show_dimensions', True)
+
     return (
         edl,
         go,
@@ -47,9 +52,14 @@ def __(mo):
 def __(edl):
     # Load election data using shared function
     df = edl.load_election_data()
+
+    # Load municipality and party data for names
+    municipalities = edl.load_municipality_data()
+    parties_data = edl.load_party_data()
+
     print(f"Columns: {df.columns.tolist()}")
-    df
-    return (df,)
+    df.head(30)
+    return (df, municipalities, parties_data)
 
 
 @app.cell
@@ -254,7 +264,7 @@ def __(mo, prob_analysis):
 
 
 @app.cell
-def __(mo, top3_per_party):
+def __(mo, municipalities, parties_data, pd, top3_per_party):
     mo.md(
         """
         ## Summary of Suspicious Cases by Municipality Size
@@ -277,19 +287,51 @@ def __(mo, top3_per_party):
     print(size_breakdown)
     print()
 
-    # Show most suspicious cases
-    most_suspicious = suspicious_cases.sort_values('Probability_of_Zero').head(10)[[
+    # Show most suspicious cases with names
+    most_suspicious = suspicious_cases.sort_values('Probability_of_Zero').head(30).copy()
+
+    # Add party names (ensure type consistency)
+    parties_lookup = parties_data[['KSTRANA', 'ZKRATKAK8']].copy()
+    parties_lookup.columns = ['Party', 'Party_Name']
+    parties_lookup['Party'] = parties_lookup['Party'].astype(str)
+    most_suspicious['Party'] = most_suspicious['Party'].astype(str)
+    most_suspicious = most_suspicious.merge(parties_lookup, on='Party', how='left')
+    most_suspicious['Party_Name'] = most_suspicious['Party_Name'].fillna(most_suspicious['Party'])
+
+    # Add municipality names
+    municipalities_lookup = municipalities[['OBEC', 'NAZEVOBCE']].copy()
+    municipalities_lookup['OBEC'] = municipalities_lookup['OBEC'].astype(str)
+    most_suspicious['OBEC'] = most_suspicious['OBEC'].astype(str)
+    most_suspicious = most_suspicious.merge(municipalities_lookup, on='OBEC', how='left')
+    most_suspicious['NAZEVOBCE'] = most_suspicious['NAZEVOBCE'].fillna('Unknown (' + most_suspicious['OBEC'].astype(str) + ')')
+
+    # Display with names
+    most_suspicious_display = most_suspicious[[
+        'Party_Name',
         'Party',
         'Party_Percentage',
+        'NAZEVOBCE',
         'OBEC',
         'Municipality_Size_Category',
         'Total_Votes_In_Commission',
         'Vote_Share_In_Category',
         'Probability_of_Zero'
-    ]]
+    ]].copy()
 
-    most_suspicious
-    return most_suspicious, size_breakdown, suspicious_cases
+    most_suspicious_display.columns = [
+        'Party',
+        'Party_Code',
+        'National_%',
+        'Municipality',
+        'OBEC_Code',
+        'Municipality_Size',
+        'Commission_Size',
+        'Party_Share_in_Size_Category_%',
+        'Probability_of_Zero'
+    ]
+
+    most_suspicious_display
+    return most_suspicious, most_suspicious_display, size_breakdown, suspicious_cases
 
 
 @app.cell

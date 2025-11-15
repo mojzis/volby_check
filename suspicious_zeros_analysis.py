@@ -13,6 +13,11 @@ def __():
     from scipy import stats
     import numpy as np
     import election_data_loader as edl
+
+    # Configure pandas display for HTML export (disable pager, limit rows)
+    pd.set_option('display.max_rows', 30)
+    pd.set_option('display.show_dimensions', True)
+
     return edl, go, mo, np, pd, px, stats
 
 
@@ -36,7 +41,7 @@ def __(mo):
 def __(edl):
     # Load election data using shared function
     df = edl.load_election_data()
-    df
+    df.head(30)
     return (df,)
 
 

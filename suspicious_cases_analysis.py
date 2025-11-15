@@ -12,6 +12,11 @@ def __():
     import zipfile
     import io
     from pathlib import Path
+
+    # Configure pandas display for HTML export (disable pager, limit rows)
+    pd.set_option('display.max_rows', 30)
+    pd.set_option('display.show_dimensions', True)
+
     return Path, io, mo, pd, requests, zipfile
 
 
