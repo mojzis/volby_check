@@ -10,6 +10,6 @@ wheels/
 .venv
 
 # Data cache files
-election_data.parquet
+# election_data.parquet - now committed to repo to avoid repeated downloads
 pscoco.csv
 cvs.csv
