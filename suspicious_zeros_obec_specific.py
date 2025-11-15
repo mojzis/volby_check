@@ -8,27 +8,21 @@ app = marimo.App(width="medium")
 def __():
     import marimo as mo
     import pandas as pd
-    import requests
-    import zipfile
-    import io
-    from pathlib import Path
     import plotly.express as px
     import plotly.graph_objects as go
     from scipy import stats
     import numpy as np
     from plotly.subplots import make_subplots
+    import election_data_loader as edl
     return (
-        Path,
+        edl,
         go,
-        io,
         make_subplots,
         mo,
         np,
         pd,
         px,
-        requests,
         stats,
-        zipfile,
     )
 
 
@@ -39,59 +33,21 @@ def __(mo):
 
 
 @app.cell
-def __(Path, io, pd, requests, zipfile):
-    # Cache file path
-    parquet_file = Path("election_data.parquet")
-
-    # Check if cached data exists
-    if parquet_file.exists():
-        df = pd.read_parquet(parquet_file)
-    else:
-        # Download the election data with headers to avoid 403
-        url = "https://www.volby.cz/opendata/ps2025/csv_od/pst4p.zip"
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
-        response = requests.get(url, headers=headers, timeout=30)
-        response.raise_for_status()
-
-        # Unzip and load the data
-        zip_file = zipfile.ZipFile(io.BytesIO(response.content))
-        csv_filename = zip_file.namelist()[0]
-
-        with zip_file.open(csv_filename) as f:
-            df = pd.read_csv(f)
-
-        # Save to parquet for future use
-        df.to_parquet(parquet_file)
-
-    print(f"Loaded {len(df):,} rows")
+def __(edl):
+    # Load election data using shared function
+    df = edl.load_election_data()
     print(f"Columns: {df.columns.tolist()}")
     df
-    return df, parquet_file
+    return (df,)
 
 
 @app.cell
-def __(df, mo):
+def __(df, edl, mo):
     mo.md("## Municipality (OBEC) Characterization")
 
-    # Calculate municipality sizes based on total votes
-    municipality_sizes = df.groupby('OBEC').agg({
-        'POC_HLASU': 'sum',
-        'ID_OKRSKY': 'nunique'
-    }).reset_index()
-    municipality_sizes.columns = ['OBEC', 'Total_Votes', 'Num_Commissions']
+    # Calculate municipality sizes using shared function
+    municipality_sizes = edl.calculate_municipality_sizes(df, n_categories=5)
 
-    # Categorize municipalities by size
-    municipality_sizes['Size_Category'] = pd.qcut(
-        municipality_sizes['Total_Votes'],
-        q=5,
-        labels=['Very Small', 'Small', 'Medium', 'Large', 'Very Large'],
-        duplicates='drop'
-    )
-
-    print("Municipality size distribution:")
-    print(municipality_sizes.groupby('Size_Category', observed=False)['OBEC'].count())
     print("\nVotes by category:")
     print(municipality_sizes.groupby('Size_Category', observed=False)['Total_Votes'].agg(['min', 'max', 'mean']))
 
@@ -100,54 +56,27 @@ def __(df, mo):
 
 
 @app.cell
-def __(df, municipality_sizes, pd):
-    # Merge municipality size info back to main dataframe
-    df_with_size = df.merge(
-        municipality_sizes[['OBEC', 'Total_Votes', 'Size_Category']],
-        on='OBEC',
-        suffixes=('', '_Municipality')
-    )
+def __(df, edl, municipality_sizes):
+    # Merge municipality size info back to main dataframe using shared function
+    df_with_size = edl.merge_municipality_sizes(df, municipality_sizes)
 
     df_with_size
     return (df_with_size,)
 
 
 @app.cell
-def __(df_with_size, pd):
-    # Calculate party performance by OBEC (municipality-specific)
-    party_by_obec = df_with_size.groupby(['KSTRANA', 'OBEC'])['POC_HLASU'].agg([
-        'sum', 'count'
-    ]).reset_index()
-    party_by_obec.columns = ['Party', 'OBEC', 'Total_Votes', 'Num_Commissions']
-
-    # Calculate total votes per OBEC to get party's share in each municipality
-    obec_totals = df_with_size.groupby('OBEC')['POC_HLASU'].sum().reset_index()
-    obec_totals.columns = ['OBEC', 'OBEC_Total_Votes']
-
-    party_by_obec = party_by_obec.merge(obec_totals, on='OBEC')
-    party_by_obec['Vote_Share_In_OBEC'] = party_by_obec['Total_Votes'] / party_by_obec['OBEC_Total_Votes'] * 100
-    party_by_obec['Probability_In_OBEC'] = party_by_obec['Vote_Share_In_OBEC'] / 100
-
-    print(f"Calculated party performance in {party_by_obec['OBEC'].nunique()} municipalities")
-    print(f"Total party-municipality combinations: {len(party_by_obec)}")
+def __(df_with_size, edl):
+    # Calculate party performance by OBEC using shared function
+    party_by_obec = edl.calculate_party_performance_by_obec(df_with_size)
 
     party_by_obec.head(20)
     return (party_by_obec,)
 
 
 @app.cell
-def __(df_with_size, pd):
-    # Calculate overall party statistics
-    party_totals = df_with_size.groupby('KSTRANA')['POC_HLASU'].sum().sort_values(ascending=False)
-    total_votes = party_totals.sum()
-    party_percentages = (party_totals / total_votes * 100).round(4)
-    party_probabilities = party_totals / total_votes
-
-    party_summary = pd.DataFrame({
-        'Total_Votes': party_totals,
-        'Percentage': party_percentages,
-        'Probability': party_probabilities
-    })
+def __(df_with_size, edl):
+    # Calculate party statistics using shared function
+    party_summary, party_totals, party_percentages, party_probabilities, total_votes = edl.calculate_party_statistics(df_with_size)
 
     party_summary.head(10)
     return (
@@ -160,71 +89,28 @@ def __(df_with_size, pd):
 
 
 @app.cell
-def __(party_summary):
-    # Get top 7 parties
-    top_parties = party_summary.head(7).index.tolist()
+def __(edl, party_summary):
+    # Get top 7 parties using shared function
+    top_parties = edl.get_top_parties(party_summary, n=7)
     top_parties
     return (top_parties,)
 
 
 @app.cell
-def __(df_with_size, mo, party_by_obec, pd, top_parties):
+def __(df_with_size, edl, mo, top_parties):
     mo.md("## Finding Zero-Vote Cases with OBEC Context")
 
-    # Get all unique commissions and top parties
-    all_commissions = df_with_size['ID_OKRSKY'].unique()
+    # Get commission info with OBEC and size category using shared function
+    commission_info = edl.create_commission_info(df_with_size, include_size_category=True)
 
-    # Create all possible combinations
-    all_combinations = pd.MultiIndex.from_product(
-        [top_parties, all_commissions],
-        names=['Party', 'Commission_ID']
-    ).to_frame(index=False)
-
-    # Get actual combinations
-    actual_combinations = df_with_size[df_with_size['KSTRANA'].isin(top_parties)][
-        ['KSTRANA', 'ID_OKRSKY']
-    ].copy()
-    actual_combinations.columns = ['Party', 'Commission_ID']
-    actual_combinations['Present'] = True
-
-    # Find missing combinations (zero votes)
-    combined = all_combinations.merge(actual_combinations, on=['Party', 'Commission_ID'], how='left')
-    zero_votes = combined[combined['Present'].isna()][['Party', 'Commission_ID']].copy()
-
-    # Get commission info with OBEC
-    commission_info = df_with_size.groupby('ID_OKRSKY').agg({
-        'POC_HLASU': 'sum',
-        'OBEC': 'first',
-        'Size_Category': 'first',
-        'Total_Votes': 'first'
-    }).reset_index()
-    commission_info.columns = [
-        'Commission_ID',
-        'Total_Votes_In_Commission',
-        'OBEC',
-        'Municipality_Size_Category',
-        'Municipality_Total_Votes'
-    ]
-
-    # Merge to get full info
-    zero_votes_df = zero_votes.merge(commission_info, on='Commission_ID')
-
-    # Merge OBEC-specific party probabilities
-    zero_votes_df = zero_votes_df.merge(
-        party_by_obec[['Party', 'OBEC', 'Vote_Share_In_OBEC', 'Probability_In_OBEC']],
-        on=['Party', 'OBEC'],
-        how='left'
-    )
+    # Find zero-vote cases using shared function
+    zero_votes_df = edl.calculate_zero_vote_cases(df_with_size, top_parties, commission_info)
 
     print(f"Found {len(zero_votes_df)} zero-vote cases for top parties")
-    print(f"Cases with OBEC-specific data: {zero_votes_df['Probability_In_OBEC'].notna().sum()}")
-    print(f"Cases WITHOUT OBEC data (party never appeared in that municipality): {zero_votes_df['Probability_In_OBEC'].isna().sum()}")
 
     zero_votes_df
     return (
-        all_combinations,
         commission_info,
-        zero_votes,
         zero_votes_df,
     )
 
@@ -236,56 +122,12 @@ def __(mo):
 
 
 @app.cell
-def __(party_summary, pd, zero_votes_df):
-    # Calculate probabilities
-    prob_analysis = zero_votes_df.copy()
+def __(edl, party_by_obec, party_summary, zero_votes_df):
+    # Merge OBEC probabilities and calculate using shared function
+    prob_analysis = edl.merge_obec_probabilities(zero_votes_df, party_by_obec, party_summary)
 
-    # Add overall party stats
-    prob_analysis['Party_Probability_Overall'] = prob_analysis['Party'].map(
-        lambda x: party_summary.loc[x, 'Probability']
-    )
-    prob_analysis['Party_Percentage'] = prob_analysis['Party'].map(
-        lambda x: party_summary.loc[x, 'Percentage']
-    )
-
-    # Calculate overall probability (baseline)
-    prob_analysis['Probability_of_Zero_Overall'] = (
-        1 - prob_analysis['Party_Probability_Overall']
-    ) ** prob_analysis['Total_Votes_In_Commission']
-
-    # Calculate OBEC-specific probability (most accurate!)
-    prob_analysis['Probability_of_Zero_OBEC'] = (
-        1 - prob_analysis['Probability_In_OBEC']
-    ) ** prob_analysis['Total_Votes_In_Commission']
-
-    # Use OBEC-specific where available, otherwise use overall
-    # Note: if OBEC probability is NaN, it means party never appeared in that municipality
-    prob_analysis['Probability_of_Zero'] = prob_analysis['Probability_of_Zero_OBEC'].fillna(
-        prob_analysis['Probability_of_Zero_Overall']
-    )
-
-    # Flag whether we used OBEC-specific or overall probability
-    prob_analysis['Used_OBEC_Probability'] = prob_analysis['Probability_In_OBEC'].notna()
-
-    # Convert to percentage
-    prob_analysis['Probability_of_Zero_Percent'] = prob_analysis['Probability_of_Zero'] * 100
-
-    # Flag suspicious cases (less than 1% probability) - only if we have OBEC data
-    prob_analysis['Is_Suspicious'] = (
-        (prob_analysis['Probability_of_Zero'] < 0.01) &
-        prob_analysis['Used_OBEC_Probability']
-    )
-
-    # Flag HIGHLY suspicious cases (less than 0.1%)
-    prob_analysis['Is_Highly_Suspicious'] = (
-        (prob_analysis['Probability_of_Zero'] < 0.001) &
-        prob_analysis['Used_OBEC_Probability']
-    )
-
-    print(f"Total zero-vote cases: {len(prob_analysis)}")
-    print(f"Cases using OBEC-specific probability: {prob_analysis['Used_OBEC_Probability'].sum()}")
-    print(f"Suspicious cases (< 1%): {prob_analysis['Is_Suspicious'].sum()}")
-    print(f"Highly suspicious (< 0.1%): {prob_analysis['Is_Highly_Suspicious'].sum()}")
+    # Add suspiciousness flags using shared function
+    prob_analysis = edl.add_suspiciousness_flags(prob_analysis, suspicious_threshold=0.01, highly_suspicious_threshold=0.001, require_obec_data=True)
 
     prob_analysis
     return (prob_analysis,)

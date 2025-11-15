@@ -30,9 +30,7 @@ def __():
     from scipy import stats
     from sklearn.ensemble import IsolationForest
     from sklearn.preprocessing import StandardScaler
-    import requests
-    from io import BytesIO
-    from zipfile import ZipFile
+    import election_data_loader as edl
 
     mo.md("""
     # Advanced Anomaly Detection for Czech Election Data
@@ -40,7 +38,7 @@ def __():
     This notebook applies multiple advanced statistical and machine learning techniques
     to validate suspicious zero-vote cases and identify genuine anomalies.
     """)
-    return mo, pd, np, px, go, make_subplots, stats, IsolationForest, StandardScaler, requests, BytesIO, ZipFile
+    return mo, pd, np, px, go, make_subplots, stats, IsolationForest, StandardScaler, edl
 
 
 @app.cell
@@ -54,109 +52,19 @@ def __(mo):
 
 
 @app.cell
-def __(pd, requests, BytesIO, ZipFile):
-    import os
-
-    # Check if cached data exists
-    CACHE_FILE = "election_data.parquet"
-
-    if os.path.exists(CACHE_FILE):
-        print(f"Loading cached data from {CACHE_FILE}")
-        df = pd.read_parquet(CACHE_FILE)
-    else:
-        print("Downloading election data from CZSO...")
-        # Download main election data
-        url = "https://www.volby.cz/pls/ps2025/ps2?xjazyk=CZ"
-        data_url = "https://www.volby.cz/opendata/ps2025/csv_od/pst4p.zip"
-
-        response = requests.get(data_url)
-        zip_file = ZipFile(BytesIO(response.content))
-
-        # Read the CSV file from zip
-        csv_file = [f for f in zip_file.namelist() if f.endswith('.csv')][0]
-        df = pd.read_csv(
-            zip_file.open(csv_file),
-            encoding='cp1250',
-            delimiter=';',
-            dtype={'OBEC': str, 'KSTRANA': str, 'ID_OKRSKY': str}
-        )
-
-        # Cache the data
-        df.to_parquet(CACHE_FILE)
-        print(f"Data cached to {CACHE_FILE}")
-
-    print(f"Loaded {len(df):,} records")
+def __(edl):
+    # Load election data using shared function
+    df = edl.load_election_data()
     print(f"Columns: {list(df.columns)}")
-    return df, CACHE_FILE, os
+    return (df,)
 
 
 @app.cell
-def __(pd, requests, BytesIO, ZipFile, os):
-    # Load municipality names
-    municipalities_file = "pscoco.csv"
-    parties_file = "psrkl.csv"
-
-    # Try to load from cache first, then download
-    if os.path.exists(municipalities_file):
-        print(f"Loading cached municipalities from {municipalities_file}")
-        obec_df = pd.read_csv(municipalities_file, encoding='utf-8', dtype={'OBEC': str})
-    else:
-        try:
-            obec_url = "https://www.volby.cz/opendata/ps2025/csv_od/pscoco.csv"
-            obec_response = requests.get(obec_url)
-            obec_response.raise_for_status()  # Raise error for bad status codes
-
-            # Save the raw bytes to file (like other notebooks do)
-            with open(municipalities_file, 'wb') as f:
-                f.write(obec_response.content)
-            print(f"Downloaded and cached municipalities to {municipalities_file}")
-        except Exception as e:
-            print(f"Warning: Could not load municipality data: {e}")
-            # Create empty file for fallback
-            with open(municipalities_file, 'w') as f:
-                f.write('')
-
-        # Now read the file
-        try:
-            obec_df = pd.read_csv(municipalities_file, encoding='utf-8', dtype={'OBEC': str})
-        except:
-            # Create minimal fallback dataframe
-            obec_df = pd.DataFrame({'OBEC': []})
-
-    # Load party names
-    if os.path.exists(parties_file):
-        print(f"Loading cached parties from {parties_file}")
-        party_df = pd.read_csv(parties_file, encoding='utf-8', dtype={'KSTRANA': str})
-    else:
-        try:
-            party_url = "https://www.volby.cz/opendata/ps2025/csv_od/psrkl.csv"
-            party_response = requests.get(party_url)
-            party_response.raise_for_status()
-
-            # Save the raw bytes to file (like other notebooks do)
-            with open(parties_file, 'wb') as f:
-                f.write(party_response.content)
-            print(f"Downloaded and cached parties to {parties_file}")
-        except Exception as e:
-            print(f"Warning: Could not load party data: {e}")
-            # Create empty file for fallback
-            with open(parties_file, 'w') as f:
-                f.write('')
-
-        # Now read the file
-        try:
-            party_df = pd.read_csv(parties_file, encoding='utf-8', dtype={'KSTRANA': str})
-        except:
-            # Create minimal fallback dataframe
-            party_df = pd.DataFrame({'KSTRANA': []})
-
-    print(f"Loaded {len(obec_df):,} municipalities")
-    if len(obec_df) > 0:
-        print(f"Municipality columns: {list(obec_df.columns)}")
-    print(f"Loaded {len(party_df):,} parties")
-    if len(party_df) > 0:
-        print(f"Party columns: {list(party_df.columns)}")
-    return obec_df, party_df, municipalities_file, parties_file
+def __(edl):
+    # Load municipality and party data using shared functions
+    obec_df = edl.load_municipality_data()
+    party_df = edl.load_party_data()
+    return obec_df, party_df
 
 
 @app.cell
