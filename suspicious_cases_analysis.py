@@ -116,13 +116,13 @@ def __(df, mo, party_names, pd):
 
     # Display top parties with names
     top_parties_display = []
-    for party_code in top_parties:
-        party_name = party_names.get(party_code, str(party_code))
-        pct = party_summary.loc[party_code, 'Percentage']
-        votes = party_summary.loc[party_code, 'Total_Votes']
+    for _party_code in top_parties:
+        _party_name = party_names.get(_party_code, str(_party_code))
+        pct = party_summary.loc[_party_code, 'Percentage']
+        votes = party_summary.loc[_party_code, 'Total_Votes']
         top_parties_display.append({
-            'Party': party_name,
-            'Code': party_code,
+            'Party': _party_name,
+            'Code': _party_code,
             'Total_Votes': f"{votes:,.0f}",
             'Percentage': f"{pct:.2f}%"
         })
@@ -258,27 +258,27 @@ def __(mo, municipality_names, party_names, pd, zero_votes_with_prob):
 
     # Create enriched summary table with party and municipality names
     summary_data = []
-    for idx, row in most_suspicious.iterrows():
-        party_code = row['Party']
-        party_name = party_names.get(party_code, str(party_code))
-        obec_code = row['OBEC']
+    for _idx, _row in most_suspicious.iterrows():
+        _party_code = _row['Party']
+        _party_name = party_names.get(_party_code, str(_party_code))
+        obec_code = _row['OBEC']
         obec_name = municipality_names.get(obec_code, f"Unknown ({obec_code})")
 
-        status = 'HIGHLY SUSPICIOUS' if row['Is_Highly_Suspicious'] else (
-            'SUSPICIOUS' if row['Is_Suspicious'] else 'Notable'
+        status = 'HIGHLY SUSPICIOUS' if _row['Is_Highly_Suspicious'] else (
+            'SUSPICIOUS' if _row['Is_Suspicious'] else 'Notable'
         )
 
         summary_data.append({
             'Rank': len(summary_data) + 1,
-            'Party': party_name,
-            'Party_Code': party_code,
+            'Party': _party_name,
+            'Party_Code': _party_code,
             'Municipality': obec_name,
             'OBEC_Code': obec_code,
-            'Commission_ID': row['Commission_ID'],
-            'Commission_Size': int(row['Total_Votes_In_Commission']),
-            'Party_Share_in_Municipality_%': f"{row['Vote_Share_In_OBEC']:.2f}",
-            'Party_National_%': f"{row['Party_Percentage']:.1f}",
-            'Probability_of_Zero': f"{row['Probability_of_Zero_OBEC']:.2e}",
+            'Commission_ID': _row['Commission_ID'],
+            'Commission_Size': int(_row['Total_Votes_In_Commission']),
+            'Party_Share_in_Municipality_%': f"{_row['Vote_Share_In_OBEC']:.2f}",
+            'Party_National_%': f"{_row['Party_Percentage']:.1f}",
+            'Probability_of_Zero': f"{_row['Probability_of_Zero_OBEC']:.2e}",
             'Status': status
         })
 
@@ -291,17 +291,17 @@ def __(mo, municipality_names, party_names, pd, zero_votes_with_prob):
 def __(mo, summary_df):
     mo.md("## Detailed View of Top 10 Cases")
 
-    for i, row in summary_df.head(10).iterrows():
-        print(f"\n{row['Rank']}. {row['Party']} (Code: {row['Party_Code']})")
-        print(f"   Municipality: {row['Municipality']} (OBEC: {row['OBEC_Code']})")
-        print(f"   Commission ID: {row['Commission_ID']}")
-        print(f"   Commission size: {row['Commission_Size']} votes")
-        print(f"   Party's share in this municipality: {row['Party_Share_in_Municipality_%']}%")
-        print(f"   Party's national share: {row['Party_National_%']}%")
-        print(f"   Probability of 0 votes: {row['Probability_of_Zero']}")
-        print(f"   Status: {row['Status']}")
+    for _i, _row in summary_df.head(10).iterrows():
+        print(f"\n{_row['Rank']}. {_row['Party']} (Code: {_row['Party_Code']})")
+        print(f"   Municipality: {_row['Municipality']} (OBEC: {_row['OBEC_Code']})")
+        print(f"   Commission ID: {_row['Commission_ID']}")
+        print(f"   Commission size: {_row['Commission_Size']} votes")
+        print(f"   Party's share in this municipality: {_row['Party_Share_in_Municipality_%']}%")
+        print(f"   Party's national share: {_row['Party_National_%']}%")
+        print(f"   Probability of 0 votes: {_row['Probability_of_Zero']}")
+        print(f"   Status: {_row['Status']}")
         print("-" * 100)
-    return i, row
+    return
 
 
 @app.cell
