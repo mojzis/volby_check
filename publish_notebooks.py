@@ -25,8 +25,14 @@ NOTEBOOKS = [
     },
     {
         "file": "suspicious_zeros_obec_specific.py",
-        "title": "Municipality-Specific Analysis",
+        "title": "Municipality-Specific Analysis (2025)",
         "description": "Detailed analysis with municipality-level context and size adjustments - the most comprehensive view",
+        "recommended": True
+    },
+    {
+        "file": "suspicious_zeros_obec_specific_2021.py",
+        "title": "Municipality-Specific Analysis (2021)",
+        "description": "2021 election analysis with municipality-level context and size adjustments",
         "recommended": True
     },
     {
