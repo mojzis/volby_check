@@ -66,8 +66,8 @@ def __(pd, requests, BytesIO, ZipFile):
     else:
         print("Downloading election data from CZSO...")
         # Download main election data
-        url = "https://www.volby.cz/pls/ps2021/ps2?xjazyk=CZ"
-        data_url = "https://www.volby.cz/opendata/ps2021/pst4p.zip"
+        url = "https://www.volby.cz/pls/ps2025/ps2?xjazyk=CZ"
+        data_url = "https://www.volby.cz/opendata/ps2025/csv_od/pst4p.zip"
 
         response = requests.get(data_url)
         zip_file = ZipFile(BytesIO(response.content))
@@ -99,54 +99,54 @@ def __(pd, requests, BytesIO, ZipFile, os):
     # Try to load from cache first, then download
     if os.path.exists(municipalities_file):
         print(f"Loading cached municipalities from {municipalities_file}")
-        try:
-            obec_df = pd.read_csv(municipalities_file, encoding='utf-8', delimiter=';', dtype={'OBEC': str})
-        except:
-            obec_df = pd.read_csv(municipalities_file, encoding='cp1250', delimiter=';', dtype={'OBEC': str})
+        obec_df = pd.read_csv(municipalities_file, encoding='utf-8', dtype={'OBEC': str})
     else:
         try:
             obec_url = "https://www.volby.cz/opendata/ps2025/csv_od/pscoco.csv"
             obec_response = requests.get(obec_url)
             obec_response.raise_for_status()  # Raise error for bad status codes
 
-            obec_df = pd.read_csv(
-                BytesIO(obec_response.content),
-                encoding='cp1250',
-                delimiter=';',
-                dtype={'OBEC': str}
-            )
-            # Cache the file
-            obec_df.to_csv(municipalities_file, encoding='utf-8', sep=';', index=False)
+            # Save the raw bytes to file (like other notebooks do)
+            with open(municipalities_file, 'wb') as f:
+                f.write(obec_response.content)
             print(f"Downloaded and cached municipalities to {municipalities_file}")
         except Exception as e:
             print(f"Warning: Could not load municipality data: {e}")
+            # Create empty file for fallback
+            with open(municipalities_file, 'w') as f:
+                f.write('')
+
+        # Now read the file
+        try:
+            obec_df = pd.read_csv(municipalities_file, encoding='utf-8', dtype={'OBEC': str})
+        except:
             # Create minimal fallback dataframe
             obec_df = pd.DataFrame({'OBEC': []})
 
     # Load party names
     if os.path.exists(parties_file):
         print(f"Loading cached parties from {parties_file}")
-        try:
-            party_df = pd.read_csv(parties_file, encoding='utf-8', delimiter=';', dtype={'KSTRANA': str})
-        except:
-            party_df = pd.read_csv(parties_file, encoding='cp1250', delimiter=';', dtype={'KSTRANA': str})
+        party_df = pd.read_csv(parties_file, encoding='utf-8', dtype={'KSTRANA': str})
     else:
         try:
             party_url = "https://www.volby.cz/opendata/ps2025/csv_od/psrkl.csv"
             party_response = requests.get(party_url)
             party_response.raise_for_status()
 
-            party_df = pd.read_csv(
-                BytesIO(party_response.content),
-                encoding='cp1250',
-                delimiter=';',
-                dtype={'KSTRANA': str}
-            )
-            # Cache the file
-            party_df.to_csv(parties_file, encoding='utf-8', sep=';', index=False)
+            # Save the raw bytes to file (like other notebooks do)
+            with open(parties_file, 'wb') as f:
+                f.write(party_response.content)
             print(f"Downloaded and cached parties to {parties_file}")
         except Exception as e:
             print(f"Warning: Could not load party data: {e}")
+            # Create empty file for fallback
+            with open(parties_file, 'w') as f:
+                f.write('')
+
+        # Now read the file
+        try:
+            party_df = pd.read_csv(parties_file, encoding='utf-8', dtype={'KSTRANA': str})
+        except:
             # Create minimal fallback dataframe
             party_df = pd.DataFrame({'KSTRANA': []})
 
@@ -177,6 +177,9 @@ def __(df, pd, np):
         'OBEC': 'first'
     }).reset_index()
     commission_data.columns = ['ID_OKRSKY', 'TotalVotes', 'OBEC']
+
+    # Ensure OBEC is string type to match obec_df
+    commission_data['OBEC'] = commission_data['OBEC'].astype(str)
 
     # Calculate party-level statistics
     party_votes = df.groupby('KSTRANA')['POC_HLASU'].sum()
@@ -726,10 +729,13 @@ def __(df, major_party_cols, commission_final, party_df, obec_df, pd):
 
     zero_cases_df = pd.DataFrame(zero_cases)
 
+    # Ensure Party column is string type to match party_df['KSTRANA']
+    zero_cases_df['Party'] = zero_cases_df['Party'].astype(str)
+
     # Add party names if available
-    # Check for party short name column (could be ZKRATKAV8, ZKRATKA, etc.)
+    # Check for party short name column (could be ZKRATKAK8, ZKRATKA, etc.)
     party_name_col_found = None
-    for possible_party_col in ['ZKRATKAV8', 'ZKRATKA', 'ZKRATKAV30', 'NAZEVSTR']:
+    for possible_party_col in ['ZKRATKAK8', 'ZKRATKA', 'ZKRATKAK30', 'NAZEVSTR']:
         if possible_party_col in party_df.columns:
             party_name_col_found = possible_party_col
             break
@@ -743,11 +749,11 @@ def __(df, major_party_cols, commission_final, party_df, obec_df, pd):
             how='left'
         )
         # Rename to standard name for consistency
-        if party_name_col_found != 'ZKRATKAV8':
-            zero_cases_df = zero_cases_df.rename(columns={party_name_col_found: 'ZKRATKAV8'})
+        if party_name_col_found != 'ZKRATKAK8':
+            zero_cases_df = zero_cases_df.rename(columns={party_name_col_found: 'ZKRATKAK8'})
     else:
         # If no party name found, use party code as the display name
-        zero_cases_df['ZKRATKAV8'] = zero_cases_df['Party']
+        zero_cases_df['ZKRATKAK8'] = zero_cases_df['Party']
 
     # Add municipality names if available
     obec_name_col_for_zeros = None
@@ -772,8 +778,8 @@ def __(df, major_party_cols, commission_final, party_df, obec_df, pd):
 
     print(f"Total zero-vote cases for major parties: {len(zero_cases_df):,}")
     print(f"\nZero cases by party:")
-    if 'ZKRATKAV8' in zero_cases_df.columns:
-        print(zero_cases_df.groupby('ZKRATKAV8').size().sort_values(ascending=False))
+    if 'ZKRATKAK8' in zero_cases_df.columns:
+        print(zero_cases_df.groupby('ZKRATKAK8').size().sort_values(ascending=False))
     else:
         print(zero_cases_df.groupby('Party').size().sort_values(ascending=False))
     return zero_cases, zero_cases_df
@@ -798,10 +804,10 @@ def __(px, zero_cases_df):
     # Visualize composite scores for zero-vote cases
     fig_zero_scores = px.box(
         zero_cases_df,
-        x='ZKRATKAV8',
+        x='ZKRATKAK8',
         y='CompositeScore',
         title='Composite Suspiciousness Scores for Zero-Vote Cases by Party',
-        labels={'ZKRATKAV8': 'Party', 'CompositeScore': 'Composite Score'}
+        labels={'ZKRATKAK8': 'Party', 'CompositeScore': 'Composite Score'}
     )
     fig_zero_scores.add_hline(y=0.5, line_dash="dash", line_color="red", annotation_text="High suspicion threshold")
     fig_zero_scores
@@ -827,7 +833,7 @@ def __(zero_cases_df):
     # Select columns for display
     display_zero_cols = [
         'SuspiciousnessRank',
-        'ZKRATKAV8',
+        'ZKRATKAK8',
         'NAZEVOBCE',
         'ID_OKRSKY',
         'TotalVotes',
