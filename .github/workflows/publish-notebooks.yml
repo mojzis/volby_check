@@ -47,18 +47,18 @@ jobs:
         run: |
           # Export each Marimo notebook analysis file
           echo "Exporting suspicious_zeros_analysis.py..."
-          uv run marimo export html suspicious_zeros_analysis.py -o html_output/suspicious_zeros_analysis.html
+          uv run marimo export html --no-include-code suspicious_zeros_analysis.py -o html_output/suspicious_zeros_analysis.html
 
           echo "Exporting suspicious_zeros_with_obec_analysis.py..."
-          uv run marimo export html suspicious_zeros_with_obec_analysis.py -o html_output/suspicious_zeros_with_obec_analysis.html
+          uv run marimo export html --no-include-code suspicious_zeros_with_obec_analysis.py -o html_output/suspicious_zeros_with_obec_analysis.html
 
           echo "Exporting suspicious_zeros_obec_specific.py..."
           if [ -f "suspicious_zeros_obec_specific.py" ]; then
-            uv run marimo export html suspicious_zeros_obec_specific.py -o html_output/suspicious_zeros_obec_specific.html
+            uv run marimo export html --no-include-code suspicious_zeros_obec_specific.py -o html_output/suspicious_zeros_obec_specific.html
           fi
 
           echo "Exporting suspicious_cases_analysis.py..."
-          uv run marimo export html suspicious_cases_analysis.py -o html_output/suspicious_cases_analysis.html
+          uv run marimo export html --no-include-code suspicious_cases_analysis.py -o html_output/suspicious_cases_analysis.html
 
       - name: Create index page
         run: |
@@ -144,8 +144,13 @@ jobs:
 
               <div class="notebook-list">
                   <div class="notebook-item recommended">
+                      <a href="suspicious_zeros_obec_specific.html">Municipality-Specific Analysis</a>
+                      <p>Detailed analysis with municipality-level context and size adjustments - the most comprehensive view</p>
+                  </div>
+
+                  <div class="notebook-item">
                       <a href="suspicious_zeros_with_obec_analysis.html">Enhanced Analysis with Municipality Context</a>
-                      <p>Complete analysis with municipality size adjustments - the most comprehensive view</p>
+                      <p>Complete analysis with municipality size adjustments and geographic context</p>
                   </div>
 
                   <div class="notebook-item">
@@ -154,7 +159,7 @@ jobs:
                   </div>
 
                   <div class="notebook-item">
-                      <a href="suspicious_cases_analysis.html">Additional Suspicious Cases</a>
+                      <a href="suspicious_cases_analysis.html">List of Suspicious Cases</a>
                       <p>Extended analysis of suspicious voting patterns</p>
                   </div>
               </div>
