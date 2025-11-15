@@ -12,13 +12,17 @@ wheels/
 # Data cache files
 # Current year data (2025) is committed to repo for CI/CD pipelines
 # Other years can be added explicitly if needed for comparative analysis
-# Excluded patterns: older years not actively used
+# Excluded patterns: older years not actively used, and old non-year-specific files
 election_data_2017.parquet
 election_data_2013.parquet
 pscoco_2017.csv
 pscoco_2013.csv
 psrkl_2017.csv
 psrkl_2013.csv
+# Old non-year-specific cache files (replaced by year-specific versions)
+pscoco.csv
+psrkl.csv
+election_data.parquet
 
 # Temporary/test files
 test_output*.html
