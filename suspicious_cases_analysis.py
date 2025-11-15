@@ -91,7 +91,7 @@ def __(Path, municipalities_file, parties_file, pd, requests):
 
     parties_df = pd.read_csv(parties_file, encoding='utf-8')
     # Create lookup DataFrame for merging (KSTRANA is the party code used in the data)
-    parties_lookup = parties_df[['KSTRANA', 'ZKRATKAV8']].copy()
+    parties_lookup = parties_df[['KSTRANA', 'ZKRATKAK8']].copy()
     parties_lookup.columns = ['Party', 'Party_Name']
     print(f"Loaded {len(parties_lookup):,} parties")
     return municipalities, parties_df, parties_lookup

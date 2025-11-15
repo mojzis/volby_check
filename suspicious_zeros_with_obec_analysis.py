@@ -110,9 +110,9 @@ def __(df, mo):
     )
 
     print("Municipality size distribution:")
-    print(municipality_sizes.groupby('Size_Category')['OBEC'].count())
+    print(municipality_sizes.groupby('Size_Category', observed=False)['OBEC'].count())
     print("\nVotes by category:")
-    print(municipality_sizes.groupby('Size_Category')['Total_Votes'].agg(['min', 'max', 'mean']))
+    print(municipality_sizes.groupby('Size_Category', observed=False)['Total_Votes'].agg(['min', 'max', 'mean']))
 
     municipality_sizes
     return (municipality_sizes,)
@@ -128,13 +128,13 @@ def __(df, municipality_sizes, pd):
     )
 
     # Calculate party performance by municipality size
-    party_by_size = df_with_size.groupby(['KSTRANA', 'Size_Category'])['POC_HLASU'].agg([
+    party_by_size = df_with_size.groupby(['KSTRANA', 'Size_Category'], observed=False)['POC_HLASU'].agg([
         'sum', 'count', 'mean'
     ]).reset_index()
     party_by_size.columns = ['Party', 'Size_Category', 'Total_Votes', 'Num_Appearances', 'Avg_Votes']
 
     # Calculate party's vote share in each category
-    category_totals = party_by_size.groupby('Size_Category')['Total_Votes'].transform('sum')
+    category_totals = party_by_size.groupby('Size_Category', observed=False)['Total_Votes'].transform('sum')
     party_by_size['Vote_Share_In_Category'] = party_by_size['Total_Votes'] / category_totals * 100
 
     party_by_size
@@ -367,7 +367,7 @@ def __(mo, top3_per_party):
     print(f"Suspicious rate: {len(suspicious_cases)/len(top3_per_party)*100:.1f}%\n")
 
     print("Breakdown by municipality size:")
-    size_breakdown = suspicious_cases.groupby('Municipality_Size_Category').agg({
+    size_breakdown = suspicious_cases.groupby('Municipality_Size_Category', observed=False).agg({
         'Commission_ID': 'count',
         'Total_Votes_In_Commission': ['mean', 'min', 'max'],
         'Probability_of_Zero': 'mean'
@@ -664,7 +664,7 @@ def __(mo, px, suspicious_cases):
     mo.md("### Suspicious Cases: Distribution by Municipality Size")
 
     # Create distribution of suspicious cases by size category
-    susp_by_size = suspicious_cases.groupby('Municipality_Size_Category').size().reset_index(name='Count')
+    susp_by_size = suspicious_cases.groupby('Municipality_Size_Category', observed=False).size().reset_index(name='Count')
 
     size_dist_fig = px.bar(
         susp_by_size,

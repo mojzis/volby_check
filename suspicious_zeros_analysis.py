@@ -512,7 +512,7 @@ def __(go, mo, top3_per_party):
             'Party_Percentage': g['Party_Percentage'].iloc[0],
             'Num_Suspicious': g['Is_Suspicious'].sum(),
             'Max_Commission_Size': g['Total_Votes_In_Commission'].max()
-        }))
+        }), include_groups=False)
         .reset_index()
     )
 

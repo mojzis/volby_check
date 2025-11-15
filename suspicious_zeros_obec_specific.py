@@ -91,9 +91,9 @@ def __(df, mo):
     )
 
     print("Municipality size distribution:")
-    print(municipality_sizes.groupby('Size_Category')['OBEC'].count())
+    print(municipality_sizes.groupby('Size_Category', observed=False)['OBEC'].count())
     print("\nVotes by category:")
-    print(municipality_sizes.groupby('Size_Category')['Total_Votes'].agg(['min', 'max', 'mean']))
+    print(municipality_sizes.groupby('Size_Category', observed=False)['Total_Votes'].agg(['min', 'max', 'mean']))
 
     municipality_sizes
     return (municipality_sizes,)
