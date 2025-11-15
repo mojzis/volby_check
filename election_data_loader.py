@@ -5,6 +5,8 @@ This module provides reusable functions for loading and processing Czech electio
 from CZSO (Czech Statistical Office). It handles data downloading, caching, and common
 transformations used across multiple analysis notebooks.
 
+Supports multiple election years for comparative analysis (2021, 2025, etc.)
+
 Functions:
     - load_election_data(): Load main election results
     - load_municipality_data(): Load municipality (OBEC) information
@@ -30,15 +32,30 @@ from typing import Tuple, List, Optional
 DEFAULT_CACHE_DIR = Path(".")
 DEFAULT_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
 DEFAULT_TIMEOUT = 30
+DEFAULT_YEAR = 2025  # Default to most recent election
 
-# Data URLs
-ELECTION_DATA_URL = "https://www.volby.cz/opendata/ps2025/csv_od/pst4p.zip"
-MUNICIPALITY_DATA_URL = "https://www.volby.cz/opendata/ps2025/csv_od/pscoco.csv"
-PARTY_DATA_URL = "https://www.volby.cz/opendata/ps2025/csv_od/psrkl.csv"
+
+def get_data_urls(year: int) -> dict:
+    """
+    Get data URLs for a specific election year.
+
+    Args:
+        year: Election year (e.g., 2021, 2025)
+
+    Returns:
+        Dictionary with keys: 'election', 'municipality', 'party'
+    """
+    base_url = f"https://www.volby.cz/opendata/ps{year}/csv_od"
+    return {
+        'election': f"{base_url}/pst4p.zip",
+        'municipality': f"{base_url}/pscoco.csv",
+        'party': f"{base_url}/psrkl.csv"
+    }
 
 
 def load_election_data(
-    cache_file: str = "election_data.parquet",
+    year: int = DEFAULT_YEAR,
+    cache_file: Optional[str] = None,
     force_download: bool = False
 ) -> pd.DataFrame:
     """
@@ -48,7 +65,8 @@ def load_election_data(
     them locally as a Parquet file for faster subsequent loads.
 
     Args:
-        cache_file: Path to the cache file (default: "election_data.parquet")
+        year: Election year (default: 2025). Use 2021 for previous election.
+        cache_file: Path to the cache file (default: "election_data_{year}.parquet")
         force_download: If True, download data even if cache exists
 
     Returns:
@@ -59,19 +77,27 @@ def load_election_data(
         - POC_HLASU: Number of votes
 
     Example:
-        >>> df = load_election_data()
-        >>> print(f"Loaded {len(df):,} rows")
+        >>> # Load 2025 data
+        >>> df_2025 = load_election_data(year=2025)
+        >>> # Load 2021 data for comparison
+        >>> df_2021 = load_election_data(year=2021)
+        >>> print(f"Loaded {len(df_2025):,} rows from 2025")
     """
+    # Default cache file includes year for easy comparison
+    if cache_file is None:
+        cache_file = f"election_data_{year}.parquet"
+
     parquet_file = Path(cache_file)
+    urls = get_data_urls(year)
 
     # Check if cached data exists
     if parquet_file.exists() and not force_download:
-        print(f"Loading cached election data from {cache_file}")
+        print(f"Loading cached {year} election data from {cache_file}")
         df = pd.read_parquet(parquet_file)
     else:
-        print("Downloading election data from CZSO...")
+        print(f"Downloading {year} election data from CZSO...")
         headers = {'User-Agent': DEFAULT_USER_AGENT}
-        response = requests.get(ELECTION_DATA_URL, headers=headers, timeout=DEFAULT_TIMEOUT)
+        response = requests.get(urls['election'], headers=headers, timeout=DEFAULT_TIMEOUT)
         response.raise_for_status()
 
         # Unzip and load the data
@@ -85,19 +111,21 @@ def load_election_data(
         df.to_parquet(parquet_file)
         print(f"Data cached to {cache_file}")
 
-    print(f"Loaded {len(df):,} election records")
+    print(f"Loaded {len(df):,} election records from {year}")
     return df
 
 
 def load_municipality_data(
-    cache_file: str = "pscoco.csv",
+    year: int = DEFAULT_YEAR,
+    cache_file: Optional[str] = None,
     force_download: bool = False
 ) -> pd.DataFrame:
     """
     Load municipality (OBEC) data from CZSO, with local caching.
 
     Args:
-        cache_file: Path to the cache file (default: "pscoco.csv")
+        year: Election year (default: 2025)
+        cache_file: Path to the cache file (default: "pscoco_{year}.csv")
         force_download: If True, download data even if cache exists
 
     Returns:
@@ -106,15 +134,20 @@ def load_municipality_data(
         - NAZEVOBCE: Municipality name
 
     Example:
-        >>> municipalities = load_municipality_data()
+        >>> municipalities = load_municipality_data(year=2025)
         >>> print(f"Loaded {len(municipalities):,} municipalities")
     """
+    # Default cache file includes year
+    if cache_file is None:
+        cache_file = f"pscoco_{year}.csv"
+
     cache_path = Path(cache_file)
+    urls = get_data_urls(year)
 
     if not cache_path.exists() or force_download:
-        print("Downloading municipality data from CZSO...")
+        print(f"Downloading {year} municipality data from CZSO...")
         headers = {'User-Agent': DEFAULT_USER_AGENT}
-        response = requests.get(MUNICIPALITY_DATA_URL, headers=headers, timeout=DEFAULT_TIMEOUT)
+        response = requests.get(urls['municipality'], headers=headers, timeout=DEFAULT_TIMEOUT)
         response.raise_for_status()
 
         with open(cache_path, 'wb') as f:
@@ -129,14 +162,16 @@ def load_municipality_data(
 
 
 def load_party_data(
-    cache_file: str = "psrkl.csv",
+    year: int = DEFAULT_YEAR,
+    cache_file: Optional[str] = None,
     force_download: bool = False
 ) -> pd.DataFrame:
     """
     Load party data from CZSO, with local caching.
 
     Args:
-        cache_file: Path to the cache file (default: "psrkl.csv")
+        year: Election year (default: 2025)
+        cache_file: Path to the cache file (default: "psrkl_{year}.csv")
         force_download: If True, download data even if cache exists
 
     Returns:
@@ -146,15 +181,20 @@ def load_party_data(
         - NAZEVSTR: Party full name
 
     Example:
-        >>> parties = load_party_data()
+        >>> parties = load_party_data(year=2025)
         >>> print(f"Loaded {len(parties):,} parties")
     """
+    # Default cache file includes year
+    if cache_file is None:
+        cache_file = f"psrkl_{year}.csv"
+
     cache_path = Path(cache_file)
+    urls = get_data_urls(year)
 
     if not cache_path.exists() or force_download:
-        print("Downloading party data from CZSO...")
+        print(f"Downloading {year} party data from CZSO...")
         headers = {'User-Agent': DEFAULT_USER_AGENT}
-        response = requests.get(PARTY_DATA_URL, headers=headers, timeout=DEFAULT_TIMEOUT)
+        response = requests.get(urls['party'], headers=headers, timeout=DEFAULT_TIMEOUT)
         response.raise_for_status()
 
         with open(cache_path, 'wb') as f:
