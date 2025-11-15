@@ -85,10 +85,44 @@ marimo edit suspicious_zeros_with_obec_analysis.py
 - **Update data source**: Modify download logic in analysis files
 - **Change municipality categories**: Update size tier logic in obec-specific files
 
-## Testing
+## Testing and Pre-Push Requirements
 
-Run notebooks and verify:
-- Data downloads successfully
-- Probability calculations are accurate
-- Visualizations render correctly in browser
-- No errors in Marimo execution
+**CRITICAL: Always test notebooks before committing and pushing changes!**
+
+### Required Testing Steps
+
+Before pushing any notebook changes, you MUST:
+
+1. **Test the notebook locally** by running the export command:
+   ```bash
+   uv run marimo export html --no-include-code <notebook_name>.py -o test_output.html
+   ```
+
+2. **Verify the export succeeds** without errors
+
+3. **Check the generated HTML** opens correctly in a browser
+
+4. **Validate data integrity**:
+   - Data downloads successfully
+   - Probability calculations are accurate
+   - Visualizations render correctly in browser
+   - No errors in Marimo execution
+
+### Common Testing Patterns
+
+```bash
+# Test a single notebook
+uv run marimo export html --no-include-code advanced_anomaly_detection.py -o test.html
+
+# Test all notebooks (using the publishing script)
+python publish_notebooks.py
+
+# Run notebook interactively to debug
+marimo edit advanced_anomaly_detection.py
+```
+
+### Why This Matters
+
+- GitHub Pages publishes from notebooks, so broken exports mean broken public pages
+- The publishing workflow now has error handling, but prevention is better than recovery
+- Testing locally catches column mismatches, missing data, and other runtime errors
