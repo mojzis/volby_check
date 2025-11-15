@@ -32,6 +32,10 @@ def __():
     from sklearn.preprocessing import StandardScaler
     import election_data_loader as edl
 
+    # Configure pandas display for HTML export (disable pager, limit rows)
+    pd.set_option('display.max_rows', 30)
+    pd.set_option('display.show_dimensions', True)
+
     mo.md("""
     # Advanced Anomaly Detection for Czech Election Data
 
