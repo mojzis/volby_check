@@ -215,6 +215,55 @@ def __(df, pd, np):
 @app.cell
 def __(mo):
     mo.md("""
+    ## 2.1 Commission Size Filtering
+
+    Focusing on statistically meaningful commission sizes (≥150 votes).
+
+    **Why 150 votes?**
+    - 25th percentile of commission sizes (excludes smallest 25%)
+    - Large enough for major parties (5-35% support) to have statistically significant absence
+    - For a party with 10% support, P(0 votes) in a 150-vote commission ≈ 0.000003%
+    - Avoids false positives from natural variance in very small commissions
+
+    **Impact:**
+    - Very small commissions (< 150 votes) have high natural variance
+    - ML anomaly detection can mistake normal variance for suspicious patterns
+    - By filtering, we focus on cases where anomalies are meaningful
+    """)
+    return
+
+
+@app.cell
+def __(commission_party_votes_with_obec, pd, np):
+    # Filter to commissions with >= 150 votes
+    MIN_COMMISSION_SIZE = 150
+
+    commission_filtered = commission_party_votes_with_obec[
+        commission_party_votes_with_obec['TotalVotes'] >= MIN_COMMISSION_SIZE
+    ].copy()
+
+    # Calculate filtering statistics
+    total_commissions_before = len(commission_party_votes_with_obec)
+    total_commissions_after = len(commission_filtered)
+    filtered_out = total_commissions_before - total_commissions_after
+    filtered_pct = (filtered_out / total_commissions_before) * 100
+
+    print(f"Commission Size Filter: >= {MIN_COMMISSION_SIZE} votes")
+    print(f"Before filtering: {total_commissions_before:,} commissions")
+    print(f"After filtering: {total_commissions_after:,} commissions")
+    print(f"Filtered out: {filtered_out:,} commissions ({filtered_pct:.1f}%)")
+    print(f"\nFiltered commission stats:")
+    print(f"  Min votes: {commission_filtered['TotalVotes'].min():.0f}")
+    print(f"  Median votes: {commission_filtered['TotalVotes'].median():.0f}")
+    print(f"  Mean votes: {commission_filtered['TotalVotes'].mean():.0f}")
+    print(f"  Max votes: {commission_filtered['TotalVotes'].max():.0f}")
+
+    return MIN_COMMISSION_SIZE, commission_filtered, total_commissions_before, total_commissions_after, filtered_out, filtered_pct
+
+
+@app.cell
+def __(mo):
+    mo.md("""
     ## 3. Advanced Anomaly Detection Techniques
 
     ### 3.1 Multi-Party Zero Detection
@@ -226,11 +275,11 @@ def __(mo):
 
 
 @app.cell
-def __(commission_party_votes_with_obec, major_parties, pd):
+def __(commission_filtered, major_parties, pd):
     # Count zeros for major parties in each commission
-    major_party_cols = [col for col in major_parties if col in commission_party_votes_with_obec.columns]
+    major_party_cols = [col for col in major_parties if col in commission_filtered.columns]
 
-    commission_with_zeros = commission_party_votes_with_obec.copy()
+    commission_with_zeros = commission_filtered.copy()
     commission_with_zeros['ZeroCount_MajorParties'] = (
         commission_with_zeros[major_party_cols] == 0
     ).sum(axis=1)
@@ -416,20 +465,47 @@ def __(mo):
 @app.cell
 def __(commission_with_stats, major_party_cols, IsolationForest, StandardScaler, np, pd):
     # Prepare features for Isolation Forest
-    # Features: vote shares for major parties, total votes, zero count
-    feature_cols = major_party_cols.copy()
+    # Enhanced features to detect patterns similar to probability-based suspiciousness
 
-    # Calculate vote shares
     X_features = commission_with_stats.copy()
+
+    # 1. Vote shares for major parties
     for _p in major_party_cols:
         X_features[f'{_p}_share'] = X_features[_p] / X_features['TotalVotes'].replace(0, np.nan)
 
     share_cols = [f'{_p}_share' for _p in major_party_cols]
 
+    # 2. Deviation from municipality mean for each party
+    # This helps detect commissions that are outliers within their municipality
+    for _p in major_party_cols:
+        obec_party_mean = X_features.groupby('OBEC')[f'{_p}_share'].transform('mean')
+        X_features[f'{_p}_deviation'] = X_features[f'{_p}_share'] - obec_party_mean
+
+    deviation_cols = [f'{_p}_deviation' for _p in major_party_cols]
+
+    # 3. Number of major parties with unusually low support (< municipality average)
+    X_features['UnusuallyLowParties'] = 0
+    for _p in major_party_cols:
+        obec_party_mean = X_features.groupby('OBEC')[f'{_p}_share'].transform('mean')
+        obec_party_std = X_features.groupby('OBEC')[f'{_p}_share'].transform('std')
+        # Count parties that are > 2 std below municipality mean
+        is_unusually_low = (X_features[f'{_p}_share'] < obec_party_mean - 2 * obec_party_std)
+        X_features['UnusuallyLowParties'] += is_unusually_low.astype(int)
+
     # Select features for modeling
-    model_features = share_cols + ['TotalVotes', 'ZeroCount_MajorParties', 'CommissionSize_ZScore']
+    model_features = (
+        share_cols +
+        deviation_cols +
+        ['TotalVotes', 'ZeroCount_MajorParties', 'CommissionSize_ZScore', 'UnusuallyLowParties']
+    )
 
     X = X_features[model_features].fillna(0)
+
+    print(f"Enhanced feature engineering:")
+    print(f"  Vote shares: {len(share_cols)} features")
+    print(f"  Municipality deviations: {len(deviation_cols)} features")
+    print(f"  Other features: 4")
+    print(f"  Total features: {len(model_features)}")
 
     # Standardize features
     scaler = StandardScaler()
@@ -453,7 +529,7 @@ def __(commission_with_stats, major_party_cols, IsolationForest, StandardScaler,
 
     print(f"Anomalies detected by Isolation Forest: {X_features['IsolationForest_Anomaly'].sum():,}")
     print(f"Anomaly rate: {X_features['IsolationForest_Anomaly'].mean():.2%}")
-    return X_features, feature_cols, share_cols, model_features, X, scaler, X_scaled, iso_forest
+    return X_features, share_cols, deviation_cols, model_features, X, scaler, X_scaled, iso_forest
 
 
 @app.cell
@@ -903,6 +979,187 @@ def __(commission_final, zero_cases_df, pd):
 @app.cell
 def __(mo):
     mo.md("""
+    ## 9.1 Method Comparison: Anomaly Detection vs Probability Analysis
+
+    Comparing how well the different anomaly detection methods agree with each other.
+    This helps identify cases where **multiple independent methods** converge on the same
+    suspicious commissions - providing stronger evidence than any single method alone.
+
+    **Key Questions:**
+    - Do the ML-based anomalies overlap with multi-party zeros?
+    - Are high composite scores driven by multiple factors or just one?
+    - Which method is most selective vs. most comprehensive?
+    """)
+    return
+
+
+@app.cell
+def __(commission_final, pd, px):
+    # Create a comparison of different detection methods
+    # Define thresholds for each method
+    high_composite_threshold = commission_final['CompositeScore'].quantile(0.95)  # Top 5%
+
+    # Flag commissions by different criteria
+    comparison_df = commission_final[['ID_OKRSKY', 'OBEC', 'TotalVotes', 'CompositeScore']].copy()
+
+    comparison_df['Method_MultiPartyZero'] = commission_final['MultiPartyZero_Flag']
+    comparison_df['Method_IsolationForest'] = commission_final['IsolationForest_Anomaly']
+    comparison_df['Method_SizeOutlier'] = commission_final['CommissionSize_Outlier']
+    comparison_df['Method_HighComposite'] = commission_final['CompositeScore'] >= high_composite_threshold
+
+    # Count how many methods flag each commission
+    method_cols = ['Method_MultiPartyZero', 'Method_IsolationForest', 'Method_SizeOutlier', 'Method_HighComposite']
+    comparison_df['Methods_Agreement'] = comparison_df[method_cols].sum(axis=1)
+
+    # Create overlap statistics
+    overlap_stats = pd.DataFrame({
+        'Methods Agreeing': range(0, 5),
+        'Commissions': [
+            (comparison_df['Methods_Agreement'] == i).sum()
+            for i in range(0, 5)
+        ]
+    })
+    overlap_stats['Percentage'] = (overlap_stats['Commissions'] / len(comparison_df) * 100).round(2)
+
+    print("Method Agreement Distribution:")
+    print(overlap_stats)
+    print(f"\nCommissions flagged by 2+ methods: {(comparison_df['Methods_Agreement'] >= 2).sum():,}")
+    print(f"Commissions flagged by 3+ methods: {(comparison_df['Methods_Agreement'] >= 3).sum():,}")
+    print(f"Commissions flagged by all 4 methods: {(comparison_df['Methods_Agreement'] == 4).sum():,}")
+
+    # Visualize overlap
+    fig_overlap = px.bar(
+        overlap_stats,
+        x='Methods Agreeing',
+        y='Commissions',
+        title='Number of Detection Methods Agreeing per Commission',
+        labels={'Methods Agreeing': 'Number of Methods Flagging Commission', 'Commissions': 'Count'},
+        text='Commissions'
+    )
+    fig_overlap.update_traces(textposition='outside')
+    fig_overlap
+
+    return comparison_df, method_cols, overlap_stats, high_composite_threshold, fig_overlap
+
+
+@app.cell
+def __(pd, comparison_df, method_cols):
+    # Pairwise method comparison
+    # Create a confusion matrix showing overlap between methods
+
+    pairwise_comparison = []
+    for i, method1 in enumerate(method_cols):
+        for method2 in method_cols[i+1:]:
+            both = (comparison_df[method1] & comparison_df[method2]).sum()
+            only_1 = (comparison_df[method1] & ~comparison_df[method2]).sum()
+            only_2 = (~comparison_df[method1] & comparison_df[method2]).sum()
+            neither = (~comparison_df[method1] & ~comparison_df[method2]).sum()
+
+            total_method1 = comparison_df[method1].sum()
+            total_method2 = comparison_df[method2].sum()
+
+            overlap_rate = both / min(total_method1, total_method2) * 100 if min(total_method1, total_method2) > 0 else 0
+
+            pairwise_comparison.append({
+                'Method 1': method1.replace('Method_', ''),
+                'Method 2': method2.replace('Method_', ''),
+                'Both Flag': both,
+                'Only Method 1': only_1,
+                'Only Method 2': only_2,
+                'Overlap %': f"{overlap_rate:.1f}%"
+            })
+
+    pairwise_df = pd.DataFrame(pairwise_comparison)
+
+    print("\nPairwise Method Overlap:")
+    print("(Shows how many commissions are flagged by both methods)")
+    pairwise_df
+
+    return pairwise_comparison, pairwise_df
+
+
+@app.cell
+def __(comparison_df, commission_final, obec_df, pd):
+    # Show high-consensus cases (flagged by 3+ methods)
+    high_consensus = comparison_df[comparison_df['Methods_Agreement'] >= 3].copy()
+
+    # Add municipality names
+    obec_name_col_consensus = None
+    for possible_col in ['NAZEVOBCE', 'NAZEV', 'NAZEVOB', 'OBEC_NAZEV']:
+        if possible_col in obec_df.columns:
+            obec_name_col_consensus = possible_col
+            break
+
+    if 'OBEC' in obec_df.columns and obec_name_col_consensus:
+        high_consensus = high_consensus.merge(
+            obec_df[['OBEC', obec_name_col_consensus]],
+            on='OBEC',
+            how='left'
+        )
+        if obec_name_col_consensus != 'NAZEVOBCE':
+            high_consensus = high_consensus.rename(columns={obec_name_col_consensus: 'NAZEVOBCE'})
+    else:
+        high_consensus['NAZEVOBCE'] = high_consensus['OBEC']
+
+    # Add zero count info
+    high_consensus = high_consensus.merge(
+        commission_final[['ID_OKRSKY', 'ZeroCount_MajorParties', 'SuspiciousnessRank']],
+        on='ID_OKRSKY',
+        how='left'
+    )
+
+    high_consensus_display = high_consensus[[
+        'SuspiciousnessRank', 'ID_OKRSKY', 'NAZEVOBCE', 'TotalVotes',
+        'CompositeScore', 'Methods_Agreement', 'ZeroCount_MajorParties',
+        'Method_MultiPartyZero', 'Method_IsolationForest', 'Method_SizeOutlier', 'Method_HighComposite'
+    ]].copy()
+
+    high_consensus_display = high_consensus_display.sort_values('CompositeScore', ascending=False)
+
+    high_consensus_display.columns = [
+        'Rank', 'Commission ID', 'Municipality', 'Total Votes',
+        'Composite Score', '# Methods', 'Major Parties w/ 0',
+        'Multi-Zero', 'ML Anomaly', 'Size Outlier', 'High Composite'
+    ]
+
+    print(f"\nHigh-Consensus Cases (3+ methods agree): {len(high_consensus):,} commissions")
+    print("These are the MOST SUSPICIOUS cases with multiple independent validations:\n")
+    high_consensus_display.head(30)
+
+    return high_consensus, high_consensus_display, obec_name_col_consensus
+
+
+@app.cell
+def __(mo):
+    mo.md("""
+    ### Interpretation of Method Comparison
+
+    **Strong Evidence (3-4 methods agree):**
+    - These commissions have unusual patterns detected by multiple independent approaches
+    - Very unlikely to be random statistical fluctuations
+    - Worthy of detailed investigation
+
+    **Moderate Evidence (2 methods agree):**
+    - Some unusual characteristics, but not extreme
+    - Could be real anomalies or edge cases
+    - Consider in context with other information
+
+    **Weak Evidence (1 method only):**
+    - Flagged by only one approach
+    - May be method-specific artifacts or natural variance
+    - Less reliable without corroboration
+
+    **To compare with Probability-Based Analysis:**
+    Run `suspicious_zeros_with_obec_analysis.py` separately and manually compare
+    commission IDs with high probability suspiciousness to these anomaly-detected cases.
+    Cases that appear in **both analyses** have the strongest evidence.
+    """)
+    return
+
+
+@app.cell
+def __(mo):
+    mo.md("""
     ## 10. Export Results
 
     Saving the validated suspicious cases for further analysis.
@@ -911,7 +1168,7 @@ def __(mo):
 
 
 @app.cell
-def __(commission_final, zero_cases_df, most_suspicious_zeros):
+def __(commission_final, zero_cases_df, most_suspicious_zeros, high_consensus):
     # Export commission-level data with all scores
     commission_final.to_csv('advanced_anomaly_commission_scores.csv', index=False)
     print("Saved: advanced_anomaly_commission_scores.csv")
@@ -924,6 +1181,10 @@ def __(commission_final, zero_cases_df, most_suspicious_zeros):
     most_suspicious_zeros.to_csv('most_suspicious_zero_cases.csv', index=False)
     print("Saved: most_suspicious_zero_cases.csv")
 
+    # Export high-consensus cases (3+ methods agree)
+    high_consensus.to_csv('high_consensus_cases.csv', index=False)
+    print("Saved: high_consensus_cases.csv")
+
     print("\nAll validation data exported successfully!")
     return
 
@@ -933,16 +1194,48 @@ def __(mo):
     mo.md("""
     ## Conclusions
 
-    This advanced anomaly detection analysis provides multiple independent validation methods:
+    This advanced anomaly detection analysis provides **independent validation** separate from
+    probability-based methods, using multiple complementary techniques:
 
-    1. **Multi-Party Zero Detection**: Identifies commissions where multiple major parties received 0 votes simultaneously
-    2. **Commission Size Outlier Detection**: Flags abnormally large/small commissions within municipalities
-    3. **Party Performance Consistency**: Analyzes variance in party performance across commissions
-    4. **Isolation Forest ML**: Uses unsupervised learning to detect anomalous patterns
-    5. **Composite Scoring**: Combines all methods into a single validated suspiciousness score
+    ### Key Improvements
 
-    Cases with high composite scores are validated by multiple independent methods,
-    providing stronger evidence of genuine anomalies rather than random statistical fluctuations.
+    1. **Commission Size Filtering (≥150 votes)**
+       - Focuses on statistically meaningful commission sizes
+       - Eliminates noise from very small commissions with natural high variance
+       - Aligns the analysis population with probability-based approaches
+
+    2. **Enhanced Feature Engineering**
+       - Party performance deviations from municipality averages
+       - Detection of unusually low support patterns
+       - Multi-dimensional anomaly signals (not just vote counts)
+
+    3. **Multiple Independent Detection Methods**
+       - **Multi-Party Zero Detection**: Simultaneous zeros for multiple major parties
+       - **Commission Size Outlier Detection**: Abnormal commission sizes within municipalities
+       - **Party Performance Consistency**: High variance in party performance
+       - **Isolation Forest ML**: Unsupervised learning to detect complex patterns
+
+    4. **Method Comparison Framework**
+       - Shows which methods agree on suspicious cases
+       - Identifies high-consensus cases (3-4 methods agree)
+       - Provides validation strength assessment
+
+    ### How to Use These Results
+
+    **High-Consensus Cases (3-4 methods):**
+    - Strongest evidence from anomaly detection alone
+    - Compare with probability analysis results for ultimate validation
+    - Cases appearing in both analyses warrant detailed investigation
+
+    **Moderate Cases (2 methods):**
+    - Some unusual characteristics
+    - Review in context of other information
+    - May be edge cases or real anomalies
+
+    **Next Steps:**
+    Compare commission IDs from `high_consensus_cases.csv` with highly suspicious
+    cases from the probability-based analysis to find commissions flagged by
+    **both independent approaches** - these have the strongest overall evidence.
     """)
     return
 
