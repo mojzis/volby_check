@@ -40,7 +40,7 @@ def __(Path, io, pd, requests, zipfile):
     # Cache file paths
     parquet_file = Path("election_data.parquet")
     municipalities_file = Path("pscoco.csv")
-    parties_file = Path("cvs.csv")
+    parties_file = Path("psrkl.csv")
 
     # Load election data
     if parquet_file.exists():
@@ -82,7 +82,7 @@ def __(Path, municipalities_file, parties_file, pd, requests):
     # Load party names
     if not parties_file.exists():
         print("Downloading party data...")
-        url_parties = "https://www.volby.cz/opendata/ps2025/csv_od/cvs.csv"
+        url_parties = "https://www.volby.cz/opendata/ps2025/csv_od/psrkl.csv"
         headers_parties = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
         response_parties = requests.get(url_parties, headers=headers_parties, timeout=30)
         response_parties.raise_for_status()
@@ -90,8 +90,8 @@ def __(Path, municipalities_file, parties_file, pd, requests):
             f_parties.write(response_parties.content)
 
     parties_df = pd.read_csv(parties_file, encoding='utf-8')
-    # Create lookup DataFrame for merging (VSTRANA is the party code)
-    parties_lookup = parties_df[['VSTRANA', 'ZKRATKAV8']].copy()
+    # Create lookup DataFrame for merging (KSTRANA is the party code used in the data)
+    parties_lookup = parties_df[['KSTRANA', 'ZKRATKAV8']].copy()
     parties_lookup.columns = ['Party', 'Party_Name']
     print(f"Loaded {len(parties_lookup):,} parties")
     return municipalities, parties_df, parties_lookup
