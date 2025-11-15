@@ -60,6 +60,9 @@ jobs:
           echo "Exporting suspicious_cases_analysis.py..."
           uv run marimo export html --no-include-code suspicious_cases_analysis.py -o html_output/suspicious_cases_analysis.html
 
+          echo "Exporting advanced_anomaly_detection.py..."
+          uv run marimo export html --no-include-code advanced_anomaly_detection.py -o html_output/advanced_anomaly_detection.html
+
       - name: Create index page
         run: |
           cat > html_output/index.html << 'EOF'
@@ -146,6 +149,11 @@ jobs:
                   <div class="notebook-item recommended">
                       <a href="suspicious_zeros_obec_specific.html">Municipality-Specific Analysis</a>
                       <p>Detailed analysis with municipality-level context and size adjustments - the most comprehensive view</p>
+                  </div>
+
+                  <div class="notebook-item recommended">
+                      <a href="advanced_anomaly_detection.html">Advanced Anomaly Detection</a>
+                      <p>Multi-technique validation using machine learning (Isolation Forest), multi-party analysis, and composite scoring</p>
                   </div>
 
                   <div class="notebook-item">
