@@ -47,16 +47,16 @@ def __(Path, io, pd, requests, zipfile):
         df = pd.read_parquet(parquet_file)
     else:
         print("Downloading election data...")
-        url = "https://www.volby.cz/opendata/ps2025/csv_od/pst4p.zip"
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-        response = requests.get(url, headers=headers, timeout=30)
-        response.raise_for_status()
+        url_elections = "https://www.volby.cz/opendata/ps2025/csv_od/pst4p.zip"
+        headers_elections = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+        response_elections = requests.get(url_elections, headers=headers_elections, timeout=30)
+        response_elections.raise_for_status()
 
-        zip_file = zipfile.ZipFile(io.BytesIO(response.content))
+        zip_file = zipfile.ZipFile(io.BytesIO(response_elections.content))
         csv_filename = zip_file.namelist()[0]
 
-        with zip_file.open(csv_filename) as f:
-            df = pd.read_csv(f)
+        with zip_file.open(csv_filename) as f_elections:
+            df = pd.read_csv(f_elections)
 
         df.to_parquet(parquet_file)
 
@@ -69,12 +69,12 @@ def __(Path, municipalities_file, parties_file, pd, requests):
     # Load municipality names
     if not municipalities_file.exists():
         print("Downloading municipality data...")
-        url = "https://www.volby.cz/opendata/ps2025/csv_od/pscoco.csv"
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-        response = requests.get(url, headers=headers, timeout=30)
-        response.raise_for_status()
-        with open(municipalities_file, 'wb') as f:
-            f.write(response.content)
+        url_municipalities = "https://www.volby.cz/opendata/ps2025/csv_od/pscoco.csv"
+        headers_municipalities = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+        response_municipalities = requests.get(url_municipalities, headers=headers_municipalities, timeout=30)
+        response_municipalities.raise_for_status()
+        with open(municipalities_file, 'wb') as f_municipalities:
+            f_municipalities.write(response_municipalities.content)
 
     municipalities = pd.read_csv(municipalities_file, encoding='utf-8')
     municipality_names = dict(zip(municipalities['OBEC'], municipalities['NAZEVOBCE']))
@@ -83,12 +83,12 @@ def __(Path, municipalities_file, parties_file, pd, requests):
     # Load party names
     if not parties_file.exists():
         print("Downloading party data...")
-        url = "https://www.volby.cz/opendata/ps2025/csv_od/cvs.csv"
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-        response = requests.get(url, headers=headers, timeout=30)
-        response.raise_for_status()
-        with open(parties_file, 'wb') as f:
-            f.write(response.content)
+        url_parties = "https://www.volby.cz/opendata/ps2025/csv_od/cvs.csv"
+        headers_parties = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+        response_parties = requests.get(url_parties, headers=headers_parties, timeout=30)
+        response_parties.raise_for_status()
+        with open(parties_file, 'wb') as f_parties:
+            f_parties.write(response_parties.content)
 
     parties = pd.read_csv(parties_file, encoding='utf-8')
     party_names = dict(zip(parties['VSTRANA'], parties['ZKRATKAV8']))
