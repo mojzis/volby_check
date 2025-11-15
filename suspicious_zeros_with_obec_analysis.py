@@ -275,18 +275,22 @@ def __(df_with_size, municipality_sizes, pd, party_by_obec, party_by_size, top_p
 def __(mo):
     mo.md(
         """
-        ## Enhanced Probability Calculation
+        ## Enhanced Probability Calculation with OBEC-Specific Adjustment
 
-        Now using **size-adjusted probabilities**:
+        Now using **three-tier probability hierarchy** (most accurate first):
 
-        **P(0 votes) = (1 - p_category)^n**
+        **P(0 votes) = (1 - p)^n**
 
-        Where:
-        - p_category = party's vote probability in municipalities of this size
-        - n = total votes in the commission
+        Where p is chosen from:
+        1. **p_obec** = party's vote probability in this specific municipality (most accurate)
+        2. **p_category** = party's vote probability in municipalities of this size
+        3. **p_overall** = party's overall national vote probability
 
-        This is more accurate than using overall national probability, as it accounts
-        for the fact that parties perform differently in large cities vs small towns.
+        And n = total votes in the commission
+
+        This accounts for local variations: e.g., if a party is extremely unpopular
+        in a specific municipality (like a rural party in the capital), getting zero
+        votes in one commission there may not be suspicious at all.
         """
     )
     return
@@ -305,20 +309,28 @@ def __(party_summary, pd, zero_votes_df):
         lambda x: party_summary.loc[x, 'Percentage']
     )
 
-    # Calculate probability using BOTH overall and category-specific probabilities
-    # Overall probability
+    # Calculate probability using three tiers: Overall → Size-Category → OBEC-specific
+    # Tier 1: Overall probability (baseline)
     prob_analysis['Probability_of_Zero_Overall'] = (
         1 - prob_analysis['Party_Probability_Overall']
     ) ** prob_analysis['Total_Votes_In_Commission']
 
-    # Category-adjusted probability (more accurate)
-    prob_analysis['Probability_of_Zero_Adjusted'] = (
+    # Tier 2: Size-category adjusted probability (better)
+    prob_analysis['Probability_of_Zero_Size_Adjusted'] = (
         1 - prob_analysis['Probability_In_Category']
     ) ** prob_analysis['Total_Votes_In_Commission']
 
-    # Use adjusted where available, otherwise fall back to overall
-    prob_analysis['Probability_of_Zero'] = prob_analysis['Probability_of_Zero_Adjusted'].fillna(
-        prob_analysis['Probability_of_Zero_Overall']
+    # Tier 3: OBEC-specific adjusted probability (most accurate)
+    prob_analysis['Probability_of_Zero_OBEC_Adjusted'] = (
+        1 - prob_analysis['Probability_In_OBEC']
+    ) ** prob_analysis['Total_Votes_In_Commission']
+
+    # Use the most specific probability available with fallback hierarchy:
+    # OBEC-specific → Size-Category → Overall
+    prob_analysis['Probability_of_Zero'] = (
+        prob_analysis['Probability_of_Zero_OBEC_Adjusted']
+        .fillna(prob_analysis['Probability_of_Zero_Size_Adjusted'])
+        .fillna(prob_analysis['Probability_of_Zero_Overall'])
     )
 
     # Convert to percentage
@@ -363,6 +375,7 @@ def __(mo, prob_analysis):
         'Municipality_Total_Votes',
         'Total_Votes_In_Commission',
         'Vote_Share_In_Category',
+        'Vote_Share_In_OBEC',
         'Probability_of_Zero',
         'Probability_of_Zero_Percent',
         'Is_Suspicious',
@@ -410,6 +423,7 @@ def __(mo, top3_per_party):
         'Municipality_Size_Category',
         'Total_Votes_In_Commission',
         'Vote_Share_In_Category',
+        'Vote_Share_In_OBEC',
         'Probability_of_Zero'
     ]]
 
@@ -496,12 +510,13 @@ def __(go, mo, municipality_sizes, np, prob_analysis, px, top_parties):
         y='Total_Votes_In_Commission',
         color='Suspiciousness',
         size='Bubble_Size',
-        hover_data=['Party', 'OBEC', 'Municipality_Size_Category', 'Probability_of_Zero_Percent'],
-        title='Zero-Vote Commissions: Municipality Size vs Commission Size',
+        hover_data=['Party', 'OBEC', 'Municipality_Size_Category', 'Vote_Share_In_OBEC', 'Probability_of_Zero_Percent'],
+        title='Zero-Vote Commissions: Municipality Size vs Commission Size (OBEC-Adjusted)',
         labels={
             'Municipality_Total_Votes': 'Municipality Total Votes',
             'Total_Votes_In_Commission': 'Commission Size',
-            'Suspiciousness': 'Suspiciousness Level'
+            'Suspiciousness': 'Suspiciousness Level',
+            'Vote_Share_In_OBEC': 'Party % in OBEC'
         },
         color_discrete_map={
             'Highly Suspicious (<0.1%)': 'darkred',
@@ -563,13 +578,16 @@ def __(go, mo, np, top3_per_party):
             ]
             if len(row_data) > 0:
                 row = row_data.iloc[0]
+                obec_share = row.get('Vote_Share_In_OBEC', None)
+                obec_share_text = f"{obec_share:.2f}%" if pd.notna(obec_share) else "N/A"
                 text = (
                     f"Party: {party_label}<br>"
                     f"OBEC: {row['OBEC']}<br>"
                     f"Municipality: {row['Municipality_Size_Category']}<br>"
                     f"Commission: {row['Commission_ID']}<br>"
                     f"Commission Size: {row['Total_Votes_In_Commission']} votes<br>"
-                    f"Party's vote share in {row['Municipality_Size_Category']}: {row['Vote_Share_In_Category']:.2f}%<br>"
+                    f"Party's share in this OBEC: {obec_share_text}<br>"
+                    f"Party's share in {row['Municipality_Size_Category']}: {row['Vote_Share_In_Category']:.2f}%<br>"
                     f"P(0 votes): {row['Probability_of_Zero']:.2e}<br>"
                     f"Suspicious: {'YES' if row['Is_Suspicious'] else 'No'}"
                 )
@@ -614,29 +632,23 @@ def __(go, mo, np, top3_per_party):
 
 @app.cell
 def __(go, mo, make_subplots, top3_per_party):
-    mo.md("### Comparison: Overall vs Size-Adjusted Probabilities")
+    mo.md("### Comparison: Overall vs Size-Adjusted vs OBEC-Adjusted Probabilities")
 
-    # Compare the two probability calculations
+    # Compare the three probability calculations
     comparison_data = top3_per_party[
-        top3_per_party['Probability_of_Zero_Overall'].notna() &
-        top3_per_party['Probability_of_Zero_Adjusted'].notna()
+        top3_per_party['Probability_of_Zero_Overall'].notna()
     ].copy()
 
     comparison_data['Party_Label'] = comparison_data.apply(
         lambda row: f"{row['Party']} ({row['Party_Percentage']:.1f}%)", axis=1
     )
 
-    # Calculate difference
-    comparison_data['Probability_Ratio'] = (
-        comparison_data['Probability_of_Zero_Adjusted'] /
-        comparison_data['Probability_of_Zero_Overall']
-    )
-
-    # Create subplot with two charts
+    # Create subplot with three charts
     fig = make_subplots(
-        rows=1, cols=2,
-        subplot_titles=('Overall Probability', 'Size-Adjusted Probability'),
-        specs=[[{'type': 'scatter'}, {'type': 'scatter'}]]
+        rows=1, cols=3,
+        subplot_titles=('Overall Probability', 'Size-Adjusted', 'OBEC-Adjusted (Most Accurate)'),
+        specs=[[{'type': 'scatter'}, {'type': 'scatter'}, {'type': 'scatter'}]],
+        horizontal_spacing=0.08
     )
 
     # Chart 1: Overall
@@ -647,11 +659,11 @@ def __(go, mo, make_subplots, top3_per_party):
             mode='markers',
             name='Overall',
             marker=dict(
-                size=10,
+                size=8,
                 color=comparison_data['Party_Percentage'],
                 colorscale='Viridis',
                 showscale=True,
-                colorbar=dict(title='Party %', x=0.46)
+                colorbar=dict(title='Party %', x=1.02)
             ),
             text=comparison_data['Party'],
             hovertemplate='Party: %{text}<br>Commission Size: %{x}<br>P(0): %{y:.2e}<extra></extra>'
@@ -659,15 +671,15 @@ def __(go, mo, make_subplots, top3_per_party):
         row=1, col=1
     )
 
-    # Chart 2: Adjusted
+    # Chart 2: Size-Adjusted
     fig.add_trace(
         go.Scatter(
             x=comparison_data['Total_Votes_In_Commission'],
-            y=comparison_data['Probability_of_Zero_Adjusted'],
+            y=comparison_data['Probability_of_Zero_Size_Adjusted'],
             mode='markers',
-            name='Adjusted',
+            name='Size-Adjusted',
             marker=dict(
-                size=10,
+                size=8,
                 color=comparison_data['Party_Percentage'],
                 colorscale='Viridis',
                 showscale=False
@@ -678,13 +690,34 @@ def __(go, mo, make_subplots, top3_per_party):
         row=1, col=2
     )
 
+    # Chart 3: OBEC-Adjusted
+    fig.add_trace(
+        go.Scatter(
+            x=comparison_data['Total_Votes_In_Commission'],
+            y=comparison_data['Probability_of_Zero_OBEC_Adjusted'],
+            mode='markers',
+            name='OBEC-Adjusted',
+            marker=dict(
+                size=8,
+                color=comparison_data['Party_Percentage'],
+                colorscale='Viridis',
+                showscale=False
+            ),
+            text=comparison_data['Party'],
+            hovertemplate='Party: %{text}<br>Commission Size: %{x}<br>P(0): %{y:.2e}<extra></extra>'
+        ),
+        row=1, col=3
+    )
+
     fig.update_xaxes(title_text='Commission Size', row=1, col=1)
     fig.update_xaxes(title_text='Commission Size', row=1, col=2)
+    fig.update_xaxes(title_text='Commission Size', row=1, col=3)
     fig.update_yaxes(title_text='Probability of 0 Votes', type='log', row=1, col=1)
     fig.update_yaxes(title_text='Probability of 0 Votes', type='log', row=1, col=2)
+    fig.update_yaxes(title_text='Probability of 0 Votes', type='log', row=1, col=3)
 
     fig.update_layout(
-        title_text='Comparing Probability Calculations',
+        title_text='Comparing Three Tiers of Probability Calculations',
         height=500,
         showlegend=False
     )
@@ -726,33 +759,41 @@ def __(mo, px, suspicious_cases):
 def __(mo):
     mo.md(
         """
-        ## Key Insights with Geographic Context
+        ## Key Insights with OBEC-Specific Geographic Context
 
-        ### What the Enhanced Analysis Shows:
+        ### What the Three-Tier Analysis Shows:
 
-        1. **Size-Adjusted Probabilities**: Parties perform differently in cities vs towns.
+        1. **OBEC-Specific Probabilities (Most Accurate)**: Accounts for local political
+           preferences. If a party gets 0.5% in a specific municipality overall, getting
+           zero in one commission there is NOT suspicious - it's expected!
+
+        2. **Size-Adjusted Probabilities**: Parties perform differently in cities vs towns.
            A zero in a large city for an urban party is MORE suspicious than using
            overall national probability would suggest.
 
-        2. **Geographic Patterns**: If suspicious zeros cluster in specific municipality
-           sizes, it may indicate systematic issues rather than random anomalies.
+        3. **Overall Probabilities (Baseline)**: National-level expectations, but can be
+           misleading for parties with strong regional variations.
 
-        3. **Expected vs Reality**: The comparison charts show where actual results
-           deviate most from what we'd expect given the party's performance in
-           similar-sized municipalities.
+        ### Example:
+        - A small party gets 8% nationally
+        - But only 0.2% in the capital (they're very unpopular there)
+        - Getting zero votes in one commission in the capital: **Not suspicious**
+        - The OBEC-specific adjustment correctly identifies this as expected
 
         ### Red Flags to Look For:
 
-        - **Urban party getting 0 in large cities**: Highly suspicious
-        - **Rural party getting 0 in small towns**: Highly suspicious
-        - **Clusters of suspicious zeros** in same size category
-        - **Very low probabilities** (< 0.1%): Nearly impossible by chance
+        - **Party getting 0 where they're locally STRONG** (high Vote_Share_In_OBEC): Highly suspicious
+        - **Urban party getting 0 in their stronghold cities**: Highly suspicious
+        - **Rural party getting 0 in their stronghold towns**: Highly suspicious
+        - **Very low OBEC-adjusted probabilities** (< 0.1%): Nearly impossible by chance
+        - Zeros in areas where party is weak: Often NOT suspicious
 
         ### Interpretation:
 
-        - **Municipality size matters**: Context is crucial for assessing suspiciousness
-        - **Size-adjusted probabilities** are more accurate than overall national stats
-        - **Pattern detection**: Look for systematic issues, not just individual cases
+        - **Local context is crucial**: OBEC-specific probabilities filter out false positives
+        - **Vote_Share_In_OBEC is key**: Look at this column to understand if zero is expected
+        - **Hierarchy matters**: OBEC-specific → Size-Category → Overall (in order of accuracy)
+        - **Pattern detection**: Look for systematic issues in party strongholds, not just individual cases
         """
     )
     return
